@@ -3,8 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from supabase import create_client
 
-SUPABASE_URL = "https://xrvqvrmylwltptyqyjfd.supabase.co"
-SUPABASE_KEY = "sb_publishable_35Mqfnw7XJItQCyTX2vY9Q__m4APn2_"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 

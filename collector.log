@@ -38,3 +38,10 @@ Kalshi: 0 valid markets
 Fetching Polymarket markets...
 Polymarket: 500 valid markets
 Total saved: 500 rows to /Users/anirudhiyengar/Documents/quantmarkets/market_prices.csv
+Running collector at 2026-03-08 16:00:03
+Fetching Kalshi markets...
+Kalshi: 0 valid markets
+Fetching Polymarket markets...
+Polymarket: 500 valid markets
+Saved 500 rows to CSV
+Saved 500 rows to Supabase
