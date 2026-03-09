@@ -80,3 +80,17 @@ Fetching Polymarket markets...
 Polymarket: 500 valid markets
 Saved 500 rows to CSV
 Saved 500 rows to Supabase
+Running collector at 2026-03-09 02:00:03
+Fetching Kalshi markets...
+Kalshi: 0 valid markets
+Fetching Polymarket markets...
+Polymarket: 500 valid markets
+Saved 500 rows to CSV
+Saved 500 rows to Supabase
+Running collector at 2026-03-09 03:00:05
+Fetching Kalshi markets...
+Kalshi: 0 valid markets
+Fetching Polymarket markets...
+Polymarket: 500 valid markets
+Saved 500 rows to CSV
+Saved 500 rows to Supabase

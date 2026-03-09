@@ -111,7 +111,6 @@ st.markdown("---")
 
 # Prediction market specific stats
 st.markdown("## 🎯 Prediction Market Intelligence")
-
 col_a, col_b, col_c = st.columns(3)
 
 with col_a:
@@ -184,3 +183,70 @@ st.subheader("📋 Market Browser")
 display_df = df[["category", "event_ticker", "mid_price", "current_price", "price_change_pct", "days_to_close", "close_time"]].copy()
 display_df.columns = ["Category", "Market", "Opening Price", "Current Price", "Change %", "Days Left", "Closes"]
 st.dataframe(display_df, use_container_width=True)
+
+st.markdown("---")
+
+# Strategy Backtester
+st.markdown("## 🔬 Strategy Backtester")
+st.markdown("Define a rule-based strategy and run it against all tracked markets.")
+
+col_s1, col_s2, col_s3 = st.columns(3)
+
+with col_s1:
+    entry_condition = st.selectbox("Buy YES if opening probability is", ["less than", "greater than", "between"])
+
+with col_s2:
+    threshold_1 = st.slider("Threshold 1", 0.05, 0.95, 0.40, 0.05)
+
+with col_s3:
+    if entry_condition == "between":
+        threshold_2 = st.slider("Threshold 2", 0.05, 0.95, 0.60, 0.05)
+    else:
+        threshold_2 = None
+
+cat_filter_bt = st.selectbox("Market category", ["All"] + sorted(df_markets["category"].unique().tolist()), key="bt_cat")
+
+if st.button("▶ Run Backtest"):
+    bt_df = df_markets.copy()
+
+    if cat_filter_bt != "All":
+        bt_df = bt_df[bt_df["category"] == cat_filter_bt]
+
+    if entry_condition == "less than":
+        bt_df = bt_df[bt_df["mid_price"] < threshold_1]
+    elif entry_condition == "greater than":
+        bt_df = bt_df[bt_df["mid_price"] > threshold_1]
+    elif entry_condition == "between":
+        bt_df = bt_df[(bt_df["mid_price"] >= threshold_1) & (bt_df["mid_price"] <= threshold_2)]
+
+    if bt_df.empty:
+        st.warning("No markets match this strategy.")
+    else:
+        st.markdown(f"### Results — {len(bt_df)} markets matched")
+
+        r_col1, r_col2, r_col3, r_col4 = st.columns(4)
+        avg_open = bt_df["mid_price"].mean()
+        avg_current = bt_df["current_price"].mean()
+        avg_change = bt_df["price_change_pct"].mean()
+        movers_up = len(bt_df[bt_df["price_change"] > 0])
+
+        r_col1.metric("Avg Opening Price", f"{avg_open:.2%}")
+        r_col2.metric("Avg Current Price", f"{avg_current:.2%}")
+        r_col3.metric("Avg Price Change", f"{avg_change:.1f}%")
+        r_col4.metric("Markets Moving Up", movers_up)
+
+        st.markdown("#### Trade List")
+        trade_df = bt_df[["event_ticker", "category", "mid_price", "current_price", "price_change_pct", "close_time"]].copy()
+        trade_df.columns = ["Market", "Category", "Entry Price", "Current Price", "Change %", "Closes"]
+        st.dataframe(trade_df.reset_index(drop=True), use_container_width=True)
+
+        fig_bt, ax_bt = plt.subplots()
+        bt_sorted = bt_df.sort_values("mid_price").reset_index(drop=True)
+        bt_sorted["cumulative_change"] = bt_sorted["price_change"].cumsum()
+        ax_bt.plot(bt_sorted.index, bt_sorted["cumulative_change"], color="#6C47FF", linewidth=2)
+        ax_bt.fill_between(bt_sorted.index, bt_sorted["cumulative_change"], alpha=0.1, color="#6C47FF")
+        ax_bt.axhline(y=0, color="black", linewidth=0.8, linestyle="--")
+        ax_bt.set_xlabel("Trade #")
+        ax_bt.set_ylabel("Cumulative Price Change")
+        ax_bt.set_title("Cumulative Performance")
+        st.pyplot(fig_bt)
