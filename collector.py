@@ -9,7 +9,10 @@ from config import SUPABASE_URL, SUPABASE_KEY
 OUTPUT_FILE = os.path.expanduser("~/Documents/quantmarkets/market_prices.csv")
 KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 POLYMARKET_BASE = "https://gamma-api.polymarket.com"
-SKIP_TICKERS = ["KXBTCD", "KXBTC-", "KXETH", "KXSOL", "KXXRP", "KXINXU", "KXNASDAQ", "KXMVE"]
+
+# Only skip true MVE combo tickers — no longer skip all KXBTC etc.
+# The live endpoint now returns real markets; we filter MVEs via the API param instead.
+SKIP_TICKERS_PREFIX = ["KXMVE"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -28,17 +31,60 @@ def categorize(question):
     else:
         return "Other"
 
-def fetch_kalshi_markets():
-    print("Fetching Kalshi markets...")
+def parse_kalshi_price(m):
+    """
+    Kalshi's API now returns prices as dollar strings (e.g. "0.56") in *_dollars fields.
+    The old integer cent fields (yes_bid, last_price) are no longer populated.
+    Try dollars fields first, fall back to legacy cent fields.
+    """
+    # Try new dollar-string fields first
+    try:
+        last = float(m.get("last_price_dollars") or 0)
+        if 0 < last < 1:
+            return last
+    except (TypeError, ValueError):
+        pass
+
+    try:
+        bid = float(m.get("yes_bid_dollars") or 0)
+        ask = float(m.get("yes_ask_dollars") or 0)
+        if bid > 0 and ask > 0:
+            mid = (bid + ask) / 2
+            if 0 < mid < 1:
+                return mid
+    except (TypeError, ValueError):
+        pass
+
+    # Legacy integer cent fields (kept for backwards compat)
+    last_cents = m.get("last_price", 0) or 0
+    if last_cents > 0:
+        mid = last_cents / 100
+        if 0 < mid < 1:
+            return mid
+
+    yes_bid_cents = m.get("yes_bid", 0) or 0
+    yes_ask_cents = m.get("yes_ask", 0) or 0
+    if yes_bid_cents > 0 and yes_ask_cents > 0:
+        mid = (yes_bid_cents + yes_ask_cents) / 2 / 100
+        if 0 < mid < 1:
+            return mid
+
+    return None
+
+def fetch_kalshi_live_markets():
+    """Fetch currently open Kalshi markets, excluding MVE combo markets."""
+    print("Fetching Kalshi live markets...")
     all_markets = []
     cursor = None
+
     for page in range(10):
-        params = {"limit": 100, "status": "open"}
+        params = {"limit": 100, "status": "open", "mve_filter": "exclude"}
         if cursor:
             params["cursor"] = cursor
         try:
             r = requests.get(f"{KALSHI_BASE}/markets", params=params, timeout=30)
             if r.status_code != 200:
+                print(f"  Kalshi live HTTP {r.status_code}: {r.text[:200]}")
                 break
             data = r.json()
             batch = data.get("markets", [])
@@ -47,44 +93,117 @@ def fetch_kalshi_markets():
             if not cursor or len(batch) < 100:
                 break
         except Exception as e:
-            print(f"Kalshi error: {e}")
+            print(f"  Kalshi live error: {e}")
             break
 
     rows = []
     timestamp = datetime.now(timezone.utc).isoformat()
+    skipped = 0
+
     for m in all_markets:
         ticker = m.get("ticker", "")
-        if not ticker or any(x in ticker for x in SKIP_TICKERS):
+        if not ticker:
             continue
-        yes_bid = m.get("yes_bid", 0)
-        yes_ask = m.get("yes_ask", 0)
-        last_price = m.get("last_price", 0)
-        open_time = m.get("open_time")
-        close_time = m.get("close_time")
+        if any(ticker.startswith(p) for p in SKIP_TICKERS_PREFIX):
+            skipped += 1
+            continue
+
+        mid_price = parse_kalshi_price(m)
+        if mid_price is None:
+            skipped += 1
+            continue
+
         event_ticker = m.get("event_ticker", "")
-
-        if last_price and last_price > 0:
-            mid_price = last_price / 100
-        elif yes_bid and yes_ask and yes_bid > 0 and yes_ask > 0:
-            mid_price = (yes_bid + yes_ask) / 2 / 100
-        else:
-            continue
-
-        if mid_price <= 0 or mid_price >= 1:
-            continue
+        title = m.get("title", event_ticker)
 
         rows.append({
             "timestamp": timestamp,
             "source": "kalshi",
             "ticker": ticker,
-            "event_ticker": event_ticker,
-            "category": categorize(event_ticker),
+            "event_ticker": title or event_ticker,
+            "category": categorize(title or event_ticker),
             "mid_price": round(mid_price, 4),
-            "open_time": open_time,
-            "close_time": close_time,
+            "open_time": m.get("open_time"),
+            "close_time": m.get("close_time"),
         })
 
-    print(f"Kalshi: {len(rows)} valid markets")
+    print(f"  Kalshi live: {len(rows)} valid markets ({skipped} skipped)")
+    return rows
+
+def fetch_kalshi_historical_markets(max_pages=5):
+    """
+    Fetch recently resolved Kalshi markets from the historical database.
+    These have known YES/NO outcomes — valuable for backtesting.
+    """
+    print("Fetching Kalshi historical markets...")
+    all_markets = []
+    cursor = None
+
+    for page in range(max_pages):
+        params = {"limit": 100, "mve_filter": "exclude"}
+        if cursor:
+            params["cursor"] = cursor
+        try:
+            r = requests.get(f"{KALSHI_BASE}/historical/markets", params=params, timeout=30)
+            if r.status_code != 200:
+                print(f"  Kalshi historical HTTP {r.status_code}: {r.text[:200]}")
+                break
+            data = r.json()
+            batch = data.get("markets", [])
+            all_markets.extend(batch)
+            cursor = data.get("cursor")
+            if not cursor or len(batch) < 100:
+                break
+        except Exception as e:
+            print(f"  Kalshi historical error: {e}")
+            break
+
+    rows = []
+    timestamp = datetime.now(timezone.utc).isoformat()
+    skipped = 0
+
+    for m in all_markets:
+        ticker = m.get("ticker", "")
+        if not ticker:
+            continue
+        if any(ticker.startswith(p) for p in SKIP_TICKERS_PREFIX):
+            skipped += 1
+            continue
+
+        # For historical markets, use last_price as the final settled price
+        mid_price = parse_kalshi_price(m)
+        if mid_price is None:
+            # Historical markets may have settled at 0 or 1 — allow those
+            last_dollars = m.get("last_price_dollars")
+            last_cents = m.get("last_price", 0) or 0
+            if last_dollars is not None:
+                try:
+                    mid_price = float(last_dollars)
+                except (TypeError, ValueError):
+                    skipped += 1
+                    continue
+            elif last_cents in (0, 100):
+                mid_price = last_cents / 100
+            else:
+                skipped += 1
+                continue
+
+        event_ticker = m.get("event_ticker", "")
+        title = m.get("title", event_ticker)
+        result = m.get("result", "")  # "yes" or "no" — outcome of the market
+
+        rows.append({
+            "timestamp": timestamp,
+            "source": "kalshi_historical",
+            "ticker": ticker,
+            "event_ticker": title or event_ticker,
+            "category": categorize(title or event_ticker),
+            "mid_price": round(mid_price, 4),
+            "open_time": m.get("open_time"),
+            "close_time": m.get("close_time") or m.get("expiration_time"),
+        })
+
+    print(f"  Kalshi historical: {len(rows)} valid markets ({skipped} skipped)")
     return rows
 
 def fetch_polymarket_markets():
@@ -132,34 +251,45 @@ def fetch_polymarket_markets():
     except Exception as e:
         print(f"Polymarket error: {e}")
 
-    print(f"Polymarket: {len(rows)} valid markets")
+    print(f"  Polymarket: {len(rows)} valid markets")
     return rows
 
-def collect():
-    print(f"Running collector at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    rows = []
-    rows.extend(fetch_kalshi_markets())
-    rows.extend(fetch_polymarket_markets())
-
+def save_rows(rows):
     if not rows:
         print("No rows to save.")
         return
 
-    # Save to CSV as backup
     df = pd.DataFrame(rows)
+
+    # Save to CSV
     if os.path.exists(OUTPUT_FILE):
         df.to_csv(OUTPUT_FILE, mode="a", header=False, index=False)
     else:
         df.to_csv(OUTPUT_FILE, mode="w", header=True, index=False)
     print(f"Saved {len(rows)} rows to CSV")
 
-    # Save to Supabase
-    try:
-        supabase.table("market_prices").insert(rows).execute()
-        print(f"Saved {len(rows)} rows to Supabase")
-    except Exception as e:
-        print(f"Supabase error: {e}")
+    # Save to Supabase in batches of 500 to stay within limits
+    batch_size = 500
+    total_saved = 0
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
+        try:
+            supabase.table("market_prices").insert(batch).execute()
+            total_saved += len(batch)
+        except Exception as e:
+            print(f"Supabase error on batch {i // batch_size + 1}: {e}")
+    print(f"Saved {total_saved} rows to Supabase")
+
+def collect():
+    print(f"\nRunning collector at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    rows = []
+    rows.extend(fetch_kalshi_live_markets())
+    rows.extend(fetch_kalshi_historical_markets())
+    rows.extend(fetch_polymarket_markets())
+
+    print(f"\nTotal rows collected: {len(rows)}")
+    save_rows(rows)
 
 if __name__ == "__main__":
     collect()

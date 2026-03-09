@@ -60,14 +60,26 @@ if df_raw.empty:
     st.warning("No data yet.")
     st.stop()
 
-df_first = df_raw.sort_values("timestamp").groupby("ticker").first().reset_index()
-df_latest = df_raw.sort_values("timestamp").groupby("ticker").last().reset_index()
-df_latest = df_latest.rename(columns={"mid_price": "current_price"})
-df_markets = df_first.merge(df_latest[["ticker", "current_price"]], on="ticker")
-df_markets["price_change"] = (df_markets["current_price"] - df_markets["mid_price"]).round(4)
-df_markets["price_change_pct"] = ((df_markets["price_change"] / df_markets["mid_price"]) * 100).round(2)
-df_markets["days_to_close"] = pd.to_datetime(df_markets["close_time"], errors="coerce").dt.tz_localize(None) - pd.Timestamp.now()
-df_markets["days_to_close"] = df_markets["days_to_close"].dt.days
+# Split live markets (polymarket + kalshi live) from historical resolved markets
+# Historical markets are resolved — prices settled at 0 or 1 — so they skew
+# the live dashboard but are valuable for backtesting.
+LIVE_SOURCES = ["polymarket", "kalshi"]
+df_live_raw = df_raw[df_raw["source"].isin(LIVE_SOURCES)]
+df_hist_raw = df_raw[df_raw["source"] == "kalshi_historical"]
+
+# Build market-level summary from live data only
+def build_markets_df(df):
+    df_first = df.sort_values("timestamp").groupby("ticker").first().reset_index()
+    df_latest = df.sort_values("timestamp").groupby("ticker").last().reset_index()
+    df_latest = df_latest.rename(columns={"mid_price": "current_price"})
+    df_m = df_first.merge(df_latest[["ticker", "current_price"]], on="ticker")
+    df_m["price_change"] = (df_m["current_price"] - df_m["mid_price"]).round(4)
+    df_m["price_change_pct"] = ((df_m["price_change"] / df_m["mid_price"]) * 100).round(2)
+    df_m["days_to_close"] = pd.to_datetime(df_m["close_time"], errors="coerce").dt.tz_localize(None) - pd.Timestamp.now()
+    df_m["days_to_close"] = df_m["days_to_close"].dt.days
+    return df_m
+
+df_markets = build_markets_df(df_live_raw)
 
 # Sidebar
 st.sidebar.title("Filters")
@@ -80,8 +92,16 @@ sort_by = st.sidebar.selectbox("Sort by", ["Opening Price", "Current Price", "Pr
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Data Pipeline")
 st.sidebar.metric("Total snapshots", len(df_raw))
-st.sidebar.metric("Unique markets", df_raw["ticker"].nunique())
+st.sidebar.metric("Live markets", df_live_raw["ticker"].nunique())
+st.sidebar.metric("Historical (resolved)", df_hist_raw["ticker"].nunique())
 st.sidebar.metric("Last updated", df_raw["timestamp"].max()[:16])
+
+# Source breakdown
+source_counts = df_raw["source"].value_counts()
+st.sidebar.markdown("**Sources**")
+for src, count in source_counts.items():
+    label = {"polymarket": "🟣 Polymarket", "kalshi": "🔵 Kalshi (live)", "kalshi_historical": "📚 Kalshi (resolved)"}.get(src, src)
+    st.sidebar.markdown(f"{label}: {df_raw[df_raw['source']==src]['ticker'].nunique()} markets")
 
 # Apply filters
 df = df_markets.copy()
@@ -173,15 +193,15 @@ with col_right:
 st.markdown("---")
 
 st.subheader("🔥 Biggest Price Movers")
-top_movers = df_markets.nlargest(10, "price_change_pct")[["event_ticker", "category", "mid_price", "current_price", "price_change_pct"]]
-top_movers.columns = ["Market", "Category", "Opening Price", "Current Price", "Change %"]
+top_movers = df_markets.nlargest(10, "price_change_pct")[["event_ticker", "source", "category", "mid_price", "current_price", "price_change_pct"]]
+top_movers.columns = ["Market", "Source", "Category", "Opening Price", "Current Price", "Change %"]
 st.dataframe(top_movers.reset_index(drop=True), use_container_width=True)
 
 st.markdown("---")
 
 st.subheader("📋 Market Browser")
-display_df = df[["category", "event_ticker", "mid_price", "current_price", "price_change_pct", "days_to_close", "close_time"]].copy()
-display_df.columns = ["Category", "Market", "Opening Price", "Current Price", "Change %", "Days Left", "Closes"]
+display_df = df[["source", "category", "event_ticker", "mid_price", "current_price", "price_change_pct", "days_to_close", "close_time"]].copy()
+display_df.columns = ["Source", "Category", "Market", "Opening Price", "Current Price", "Change %", "Days Left", "Closes"]
 st.dataframe(display_df, use_container_width=True)
 
 st.markdown("---")
@@ -189,6 +209,13 @@ st.markdown("---")
 # Strategy Backtester
 st.markdown("## 🔬 Strategy Backtester")
 st.markdown("Define a rule-based strategy and run it against all tracked markets.")
+
+# Let users choose which data to backtest against
+bt_source = st.radio(
+    "Data source for backtest",
+    ["Live markets only (Polymarket + Kalshi)", "Include resolved Kalshi markets (more data)"],
+    horizontal=True
+)
 
 col_s1, col_s2, col_s3 = st.columns(3)
 
@@ -207,7 +234,13 @@ with col_s3:
 cat_filter_bt = st.selectbox("Market category", ["All"] + sorted(df_markets["category"].unique().tolist()), key="bt_cat")
 
 if st.button("▶ Run Backtest"):
-    bt_df = df_markets.copy()
+    # Choose dataset
+    if "resolved" in bt_source:
+        # Merge live + historical, deduplicate by ticker keeping latest
+        combined_raw = pd.concat([df_live_raw, df_hist_raw], ignore_index=True)
+        bt_df = build_markets_df(combined_raw)
+    else:
+        bt_df = df_markets.copy()
 
     if cat_filter_bt != "All":
         bt_df = bt_df[bt_df["category"] == cat_filter_bt]
@@ -236,8 +269,8 @@ if st.button("▶ Run Backtest"):
         r_col4.metric("Markets Moving Up", movers_up)
 
         st.markdown("#### Trade List")
-        trade_df = bt_df[["event_ticker", "category", "mid_price", "current_price", "price_change_pct", "close_time"]].copy()
-        trade_df.columns = ["Market", "Category", "Entry Price", "Current Price", "Change %", "Closes"]
+        trade_df = bt_df[["event_ticker", "source", "category", "mid_price", "current_price", "price_change_pct", "close_time"]].copy()
+        trade_df.columns = ["Market", "Source", "Category", "Entry Price", "Current Price", "Change %", "Closes"]
         st.dataframe(trade_df.reset_index(drop=True), use_container_width=True)
 
         fig_bt, ax_bt = plt.subplots()
@@ -302,6 +335,17 @@ if st.button("🎯 Find Best Bets"):
         rec_df["potential_profit"] = ((rec_df["payout_if_yes"] - 1) * rec_df["bet_amount"]).round(2)
         rec_df["pct_of_budget"] = ((rec_df["bet_amount"] / budget) * 100).round(1)
 
+        # Build direct links for Polymarket markets
+        # Polymarket ticker = conditionId; URL format: polymarket.com/event/<conditionId>
+        def make_link(row):
+            if row["source"] == "polymarket":
+                return f"https://polymarket.com/event/{row['ticker']}"
+            elif row["source"] == "kalshi":
+                return f"https://kalshi.com/markets/{row['ticker']}"
+            return ""
+
+        rec_df["link"] = rec_df.apply(make_link, axis=1)
+
         st.markdown(f"### Top Bets — {risk_label}")
 
         s_col1, s_col2, s_col3 = st.columns(3)
@@ -311,14 +355,23 @@ if st.button("🎯 Find Best Bets"):
 
         st.markdown("#### Recommended Bets")
         bet_display = rec_df[[
-            "event_ticker", "category", "current_price",
-            "payout_if_yes", "bet_amount", "potential_profit", "close_time"
+            "event_ticker", "source", "category", "current_price",
+            "payout_if_yes", "bet_amount", "potential_profit", "close_time", "link"
         ]].copy()
         bet_display.columns = [
-            "Market", "Category", "Current Probability",
-            "Payout per $1", "Bet Amount ($)", "Potential Profit ($)", "Closes"
+            "Market", "Source", "Category", "Current Probability",
+            "Payout per $1", "Bet Amount ($)", "Potential Profit ($)", "Closes", "🔗 Place Bet"
         ]
-        st.dataframe(bet_display.reset_index(drop=True), use_container_width=True)
+
+        # Render as HTML table so links are clickable
+        def render_link(url):
+            if url:
+                return f'<a href="{url}" target="_blank">Place Bet →</a>'
+            return ""
+
+        bet_html = bet_display.copy()
+        bet_html["🔗 Place Bet"] = bet_html["🔗 Place Bet"].apply(render_link)
+        st.write(bet_html.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         total_bet = rec_df["bet_amount"].sum()
         total_profit = rec_df["potential_profit"].sum()
