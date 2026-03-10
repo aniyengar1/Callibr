@@ -178,3 +178,15 @@ Fetching Polymarket markets...
 Total rows collected: 1829
 Saved 1829 rows to CSV
 Saved 1829 rows to Supabase
+
+Running collector at 2026-03-10 00:00:04
+Fetching Kalshi live markets...
+  Kalshi live: 834 valid markets (166 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1834
+Saved 1834 rows to CSV
+Saved 1834 rows to Supabase
