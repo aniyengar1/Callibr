@@ -885,6 +885,19 @@ with tab4:
                     ma1.metric("Avg Probability", f"{matched['current_price'].mean():.0%}")
                     ma2.metric("Avg Payout / $1", f"{(1 / safe_cp).mean():.2f}x")
 
+                    # stats cards in left column under avg metrics
+                    if category == "Sports":
+                        st.markdown("<div style='margin-top:20px;font-size:11px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>RECENT STATS</div>", unsafe_allow_html=True)
+                        shown = set()
+                        for _, row in matched.iterrows():
+                            with st.spinner(f"Fetching stats..."):
+                                stats = detect_entity_and_fetch_stats(row["event_ticker"], category)
+                            if stats:
+                                key = stats.get("player") or stats.get("team","")
+                                if key not in shown:
+                                    shown.add(key)
+                                    st.markdown(render_stats_card(stats), unsafe_allow_html=True)
+
             with ai_right:
                 st.markdown("### 🎯 Recommended Bets")
                 if matched.empty:
@@ -908,19 +921,6 @@ with tab4:
                     disp = matched[["event_ticker", "resolves_yes", "payout", "change", "link"]].copy()
                     disp.columns = ["Market", "Resolves YES", "Payout/$1", "Recent Change", "🔗"]
                     st.write(disp.to_html(escape=False, index=False), unsafe_allow_html=True)
-
-                    # stats cards for sports/politics markets
-                    if category == "Sports":
-                        st.markdown("<div style='margin-top:16px;font-size:11px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>RECENT STATS</div>", unsafe_allow_html=True)
-                        shown = set()
-                        for _, row in matched.iterrows():
-                            with st.spinner(f"Fetching stats for {row['event_ticker'][:40]}..."):
-                                stats = detect_entity_and_fetch_stats(row["event_ticker"], category)
-                            if stats:
-                                key = stats.get("player") or stats.get("team","")
-                                if key not in shown:
-                                    shown.add(key)
-                                    st.markdown(render_stats_card(stats), unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("↩ Try a different strategy"):
