@@ -433,24 +433,33 @@ def fetch_espn_team_stats(team_name, sport="nba"):
         match = next((t["team"] for t in teams if team_name.lower() in t["team"]["displayName"].lower()), None)
         if not match: return None
         tid = match["id"]
-        # Get team schedule/results
+        # Get team schedule/results — completed games only
         sched = requests.get(
             f"https://site.api.espn.com/apis/site/v2/sports/{s}/{league}/teams/{tid}/schedule",
             timeout=8
         ).json()
-        events = sched.get("events", [])[-5:]
+        all_events = sched.get("events", [])
+        # filter to only completed games
+        completed = [
+            e for e in all_events
+            if e.get("competitions",[{}])[0].get("status",{}).get("type",{}).get("completed", False)
+        ]
+        events = completed[-5:] if completed else []
         rows = []
         for e in events:
             comp = e.get("competitions",[{}])[0]
             comps = comp.get("competitors",[])
             home = next((c for c in comps if c.get("homeAway")=="home"), {})
             away = next((c for c in comps if c.get("homeAway")=="away"), {})
+            # determine W/L for this team
+            team_comp = next((c for c in comps if tid in str(c.get("team",{}).get("id",""))), {})
+            result = "W" if team_comp.get("winner") else "L"
             rows.append({
                 "Date":   e.get("date","")[:10],
                 "Home":   home.get("team",{}).get("abbreviation","?"),
                 "Away":   away.get("team",{}).get("abbreviation","?"),
                 "Score":  f"{home.get('score','?')}-{away.get('score','?')}",
-                "Result": comp.get("status",{}).get("type",{}).get("shortDetail",""),
+                "W/L":    result,
             })
         return {"team": match["displayName"], "games": rows}
     except Exception:
