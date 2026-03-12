@@ -837,11 +837,40 @@ def enrich_title_with_context(title, ticker, close_time):
     return f"{title} {context}"
 
 # Micro-market title patterns that are in-game noise, not research targets
+# Novelty/micro-market patterns that score 0 — not useful for research
 _NOISE_PATTERNS = [
-    "first half winner", "first half", "1st half",
-    "first quarter", "1st quarter", "first period", "1st period",
-    "next goal", "next score", "next basket", "anytime scorer",
-    "halftime", "half time", "live ",
+    # In-game timing markets
+    "first half", "1st half", "second half", "2nd half",
+    "first quarter", "1st quarter", "second quarter", "2nd quarter",
+    "third quarter", "3rd quarter", "fourth quarter", "4th quarter",
+    "first period", "1st period", "second period", "2nd period", "third period", "3rd period",
+    "halftime", "half time", "half-time",
+    # Next-event micro-markets
+    "next goal", "next score", "next basket", "next point", "next touchdown",
+    "next team to score", "anytime scorer",
+    # Announcer / broadcast novelty markets
+    "announcer", "will the announcer", "commentator",
+    "will anyone say", "will a player say", "will the broadcast",
+    "will the crowd", "will fans",
+    # Celebration / entertainment props
+    "celebration", "will celebrate", "dunk celebration",
+    "will shake hands", "will hug",
+    # Injury/ejection props that aren't pre-game
+    "will be ejected", "will get ejected", "will be removed",
+    # Misc live noise
+    "live ", "in-game", "in game",
+]
+
+# Patterns that signal a meaningful, researchable market — get a score boost
+_SIGNAL_PATTERNS = [
+    "winner", "win the", "will win",
+    "total points", "total goals", "total score",
+    "spread", "cover", "over/under", "over under",
+    "moneyline", "money line",
+    "advance", "qualify", "make the",
+    "championship", "finals", "playoffs", "postseason",
+    "mvp", "most valuable",
+    "season wins", "win total",
 ]
 
 def compute_edge_score(row, df_all):
@@ -849,22 +878,18 @@ def compute_edge_score(row, df_all):
     Edge Score 0-100. Higher = more likely mispriced / worth researching.
     Returns 0 immediately for:
       - Markets already at near-certain prices (resolving, not mispriced)
-      - In-game micro-markets (first half, next goal, etc.)
-    Components:
-      - Price drift vs category peers (excluding in-game noise)
-      - Divergence from opening price
-      - Proximity to close (urgency)
-      - Moderate contrarian bonus for overconfident markets
+      - Novelty/announcer/micro-markets (no research value)
+    Boosts markets about game outcomes, winners, totals, spreads.
     """
     cp = row.get("current_price", 0.5)
     title = row.get("event_ticker", "").lower()
 
     # Hard disqualifiers — these are not research-worthy
-    # 1. Market is resolving (price at near 0 or 1 = already decided)
-    if cp <= 0.05 or cp >= 0.95:
+    # 1. Market is resolving — price at extremes means it's effectively decided
+    if cp <= 0.15 or cp >= 0.85:
         return 0
 
-    # 2. In-game micro-market (first half, next goal, etc.)
+    # 2. Novelty / micro-market — no research value
     if any(p in title for p in _NOISE_PATTERNS):
         return 0
 
@@ -883,20 +908,24 @@ def compute_edge_score(row, df_all):
     score += min(drift_delta * 0.6, 15)  # max +15
 
     # 3. Contrarian signal — moderate extremes are interesting, but not resolving ones
-    # (resolving ones already killed above)
-    if cp < 0.15 or cp > 0.85:
-        score += 8   # crowd may be overconfident
+    # (resolving ones already killed above at 15%/85%)
+    if cp < 0.25 or cp > 0.75:
+        score += 8   # crowd may be overconfident at these levels
     elif 0.38 <= cp <= 0.62:
         score -= 8   # toss-up markets are less interesting for edge finding
 
-    # 4. Proximity to close — urgency bonus
+    # 4. Signal boost — meaningful market types (winner, total, spread, etc.)
+    if any(p in title for p in _SIGNAL_PATTERNS):
+        score += 10
+
+    # 5. Proximity to close — urgency bonus
     days = row.get("days_to_close", 30)
     if days is not None and not pd.isna(days):
         if days <= 3:    score += 12
         elif days <= 7:  score += 7
         elif days <= 14: score += 3
 
-    # 5. Liquidity signal — more snapshots = market is being watched
+    # 6. Liquidity signal — more snapshots = market is being watched
     snap = row.get("snapshot_count", 1)
     if snap >= 5: score += 5
     elif snap <= 1: score -= 5
@@ -1267,23 +1296,36 @@ with tab4:
         df_res = df_res[df_res["source"] == "kalshi"]
 
     if search_query.strip():
-        terms = [t for t in search_query.lower().split() if len(t) > 1]
-        # AND logic — all terms must appear in the market title
+        # Strip common noise words that appear in almost every market title
+        _search_stop = {"vs","the","a","an","in","of","to","by","for","at","on","is","are",
+                        "will","who","what","when","how","does","do","be","and","or","that"}
+        terms = [t for t in search_query.lower().split() if len(t) > 1 and t not in _search_stop]
+        if not terms:
+            terms = [t for t in search_query.lower().split() if len(t) > 1]  # fallback if all stripped
+
+        # AND logic — all meaningful terms must appear in the market title
         mask = df_res["event_ticker"].str.lower().apply(lambda t: all(term in t for term in terms))
         df_res = df_res[mask]
-        # Fallback: if AND returns nothing, try OR so user isn't left with empty results
+
+        # Fallback: if AND returns nothing AND we have 2+ terms, relax to OR
+        # but only on meaningful terms (never on noise words like "vs")
         if df_res.empty and len(terms) > 1:
-            df_res = df_markets.copy()
+            df_res_base = df_markets.copy()
+            now_utc2 = pd.Timestamp.now(tz="UTC")
+            df_res_base = df_res_base[
+                pd.to_datetime(df_res_base["close_time"], errors="coerce", utc=True).isna() |
+                (pd.to_datetime(df_res_base["close_time"], errors="coerce", utc=True) > now_utc2)
+            ]
             if research_cat != "All":
-                df_res = df_res[df_res["category"] == research_cat]
+                df_res_base = df_res_base[df_res_base["category"] == research_cat]
             if research_src == "Polymarket":
-                df_res = df_res[df_res["source"] == "polymarket"]
+                df_res_base = df_res_base[df_res_base["source"] == "polymarket"]
             elif research_src == "Kalshi":
-                df_res = df_res[df_res["source"] == "kalshi"]
-            mask_or = df_res["event_ticker"].str.lower().apply(lambda t: any(term in t for term in terms))
-            df_res = df_res[mask_or]
+                df_res_base = df_res_base[df_res_base["source"] == "kalshi"]
+            mask_or = df_res_base["event_ticker"].str.lower().apply(lambda t: any(term in t for term in terms))
+            df_res = df_res_base[mask_or]
             if not df_res.empty:
-                st.caption(f"No exact matches for all terms — showing markets matching any of: {', '.join(terms)}")
+                st.caption(f"No exact matches — showing markets containing any of: {', '.join(terms)}")
 
     # ── compute edge scores ───────────────────────────────────────────────────
     if not df_res.empty:
