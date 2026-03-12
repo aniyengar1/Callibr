@@ -190,3 +190,326 @@ Fetching Polymarket markets...
 Total rows collected: 1834
 Saved 1834 rows to CSV
 Saved 1834 rows to Supabase
+
+Running collector at 2026-03-10 02:00:04
+Fetching Kalshi live markets...
+  Kalshi live: 818 valid markets (182 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 200 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1518
+Saved 1518 rows to CSV
+Saved 1518 rows to Supabase
+
+Running collector at 2026-03-10 03:00:03
+Fetching Kalshi live markets...
+  Kalshi live: 778 valid markets (222 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 200 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1478
+Saved 1478 rows to CSV
+Saved 1478 rows to Supabase
+
+Running collector at 2026-03-10 09:00:29
+Fetching Kalshi live markets...
+  Kalshi live: 846 valid markets (154 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1846
+Saved 1846 rows to CSV
+Saved 1846 rows to Supabase
+
+Running collector at 2026-03-10 12:00:04
+Fetching Kalshi live markets...
+  Kalshi live: 963 valid markets (37 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 100 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1563
+Saved 1563 rows to CSV
+Saved 1563 rows to Supabase
+
+Running collector at 2026-03-10 13:00:06
+Fetching Kalshi live markets...
+  Kalshi live: 889 valid markets (111 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 200 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1589
+Saved 1589 rows to CSV
+Saved 1589 rows to Supabase
+
+Running collector at 2026-03-10 15:00:05
+Fetching Kalshi live markets...
+  Kalshi live HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi live: 334 valid markets (466 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 100 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 934
+Saved 934 rows to CSV
+Saved 934 rows to Supabase
+
+Running collector at 2026-03-10 17:01:12
+Fetching Kalshi live markets...
+  Kalshi live: 367 valid markets (633 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1367
+Saved 1367 rows to CSV
+Saved 1367 rows to Supabase
+
+Running collector at 2026-03-10 21:00:05
+Fetching Kalshi live markets...
+  Kalshi live: 835 valid markets (165 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 400 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1735
+Saved 1735 rows to CSV
+Saved 1735 rows to Supabase
+
+Running collector at 2026-03-10 22:04:16
+Fetching Kalshi live markets...
+  Kalshi live: 759 valid markets (241 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1759
+Saved 1759 rows to CSV
+Saved 1759 rows to Supabase
+
+Running collector at 2026-03-10 23:01:28
+Fetching Kalshi live markets...
+  Kalshi live: 706 valid markets (294 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1706
+Saved 1706 rows to CSV
+Saved 1706 rows to Supabase
+
+Running collector at 2026-03-11 03:00:03
+Fetching Kalshi live markets...
+  Kalshi live: 734 valid markets (266 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1734
+Saved 1734 rows to CSV
+Saved 1734 rows to Supabase
+
+Running collector at 2026-03-11 08:00:54
+Fetching Kalshi live markets...
+  Kalshi live error: HTTPSConnectionPool(host='api.elections.kalshi.com', port=443): Read timed out.
+  Kalshi live: 61 valid markets (39 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1061
+Saved 1061 rows to CSV
+Saved 1061 rows to Supabase
+
+Running collector at 2026-03-11 16:00:05
+Fetching Kalshi live markets...
+  Kalshi live: 723 valid markets (277 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1723
+Saved 1723 rows to CSV
+Saved 1723 rows to Supabase
+
+Running collector at 2026-03-11 18:00:05
+Fetching Kalshi live markets...
+  Kalshi live: 916 valid markets (84 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1916
+Saved 1916 rows to CSV
+Saved 1916 rows to Supabase
+
+Running collector at 2026-03-11 21:00:05
+Fetching Kalshi live markets...
+  Kalshi live: 861 valid markets (139 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429: {"error":{"code":"too_many_requests","message":"too many requests"}}
+  Kalshi historical: 200 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1561
+Saved 1561 rows to CSV
+Saved 1561 rows to Supabase
+
+Running collector at 2026-03-11 23:00:04
+Fetching Kalshi live markets...
+  Kalshi live error: HTTPSConnectionPool(host='api.elections.kalshi.com', port=443): Read timed out.
+  Kalshi live: 270 valid markets (30 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1270
+Saved 1270 rows to CSV
+Saved 1270 rows to Supabase
+
+Running collector at 2026-03-12 00:00:04
+Fetching Kalshi live markets...
+  Kalshi live: 772 valid markets (228 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1772
+Saved 1772 rows to CSV
+Saved 1772 rows to Supabase
+
+Running collector at 2026-03-12 01:00:04
+Fetching Kalshi live markets...
+  Kalshi live: 624 valid markets (376 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1624
+Saved 1624 rows to CSV
+Saved 1624 rows to Supabase
+
+Running collector at 2026-03-12 02:01:42
+Fetching Kalshi live markets...
+  Kalshi live: 721 valid markets (279 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1721
+Saved 1721 rows to CSV
+Saved 1721 rows to Supabase
+
+Running collector at 2026-03-12 03:00:03
+Fetching Kalshi live markets...
+  Kalshi live: 597 valid markets (403 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 valid markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 500 valid markets
+
+Total rows collected: 1597
+Saved 1597 rows to CSV
+Saved 1597 rows to Supabase
+
+Running collector at 2026-03-12 04:00:03
+Fetching Kalshi short-term markets (closing ≤30 days)...
+  Kalshi short-term: 1735 markets closing ≤30 days (265 skipped)
+Fetching Kalshi live markets (all)...
+  Kalshi live (all): 255 markets (745 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 300 valid markets
+
+Total rows collected: 2790
+Saved 2790 rows to CSV
+Saved 2790 rows to Supabase
+
+Running collector at 2026-03-12 05:01:43
+Fetching Kalshi short-term markets (closing ≤30 days)...
+  Kalshi rate limited, stopping short-term fetch
+  Kalshi short-term: 1053 markets closing ≤30 days (147 skipped)
+Fetching Kalshi live markets (all)...
+  Kalshi rate limited
+  Kalshi live (all): 0 markets (100 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical HTTP 429
+  Kalshi historical: 200 markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 300 valid markets
+
+Total rows collected: 1553
+Saved 1553 rows to CSV
+Saved 1553 rows to Supabase
+
+Running collector at 2026-03-12 13:00:15
+Fetching Kalshi short-term markets (closing ≤30 days)...
+  Kalshi short-term: 1756 markets closing ≤30 days (244 skipped)
+Fetching Kalshi live markets (all)...
+  Kalshi live (all): 187 markets (813 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 300 valid markets
+
+Total rows collected: 2743
+Saved 2743 rows to CSV
+Saved 2743 rows to Supabase
+
+Running collector at 2026-03-12 14:00:03
+Fetching Kalshi short-term markets (closing ≤30 days)...
+  Kalshi short-term: 1754 markets closing ≤30 days (246 skipped)
+Fetching Kalshi live markets (all)...
+  Kalshi live (all): 229 markets (771 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 300 valid markets
+
+Total rows collected: 2783
+Saved 2783 rows to CSV
+Saved 2783 rows to Supabase
+
+Running collector at 2026-03-12 15:00:03
+Fetching Kalshi short-term markets (closing ≤30 days)...
+  Kalshi short-term: 1753 markets closing ≤30 days (247 skipped)
+Fetching Kalshi live markets (all)...
+  Kalshi live (all): 235 markets (765 skipped)
+Fetching Kalshi historical markets...
+  Kalshi historical: 500 markets (0 skipped)
+Fetching Polymarket markets...
+  Polymarket: 300 valid markets
+
+Total rows collected: 2788
+Saved 2788 rows to CSV
+Saved 2788 rows to Supabase
