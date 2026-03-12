@@ -1113,8 +1113,9 @@ with tab4:
         )
         display_df["Source"] = display_df["source"].map(SOURCE_LABELS).fillna(display_df["source"])
 
-        tbl = display_df[["event_ticker", "category", "Source", "Probability", "Change", "Edge"]].copy()
-        tbl.columns = ["Market", "Category", "Source", "Probability", "Change", "Edge Score"]
+        display_df["Closes"] = pd.to_datetime(display_df["close_time"], errors="coerce", utc=True).dt.strftime("%-d %b")
+        tbl = display_df[["event_ticker", "category", "Source", "Probability", "Closes", "Change", "Edge"]].copy()
+        tbl.columns = ["Market", "Category", "Source", "Probability", "Closes", "Change", "Edge Score"]
         st.write(tbl.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         st.markdown("---")
