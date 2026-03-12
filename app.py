@@ -1135,6 +1135,14 @@ def render_research_card(row, research, news, edge_score, df_all):
         band_range = max(bull - bear, 0.01)
         fv_pos = min(max((fv - bear) / band_range * 100, 5), 95)
 
+        # Build narrative gap HTML conditionally — avoids .format() KeyError
+        narrative_html = ""
+        if narrative_flag:
+            narrative_html = f"""<div style="background:#1A0F00;border:1px solid #F59E0B44;border-left:3px solid #F59E0B;border-radius:6px;padding:14px;margin-bottom:12px;">
+  <div style="font-size:10px;color:#F59E0B;letter-spacing:0.1em;font-weight:700;text-transform:uppercase;margin-bottom:4px;">⚠️ Narrative Gap Detected</div>
+  <div style="font-size:12px;color:#CCC;">{narrative_reason}</div>
+</div>"""
+
         verdict_html = f"""
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
   <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:16px;text-align:center;">
@@ -1143,12 +1151,12 @@ def render_research_card(row, research, news, edge_score, df_all):
   </div>
   <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:16px;text-align:center;">
     <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Fair Value</div>
-    <div style="font-size:28px;font-weight:700;color:{{diff_color}};">{fv:.0%} <span style="font-size:14px;">({{diff_str}})</span></div>
+    <div style="font-size:28px;font-weight:700;color:{diff_color};">{fv:.0%} <span style="font-size:14px;">({diff_str})</span></div>
   </div>
-  <div style="background:#111;border:1px solid {{vc}};border-radius:8px;padding:16px;text-align:center;">
+  <div style="background:#111;border:1px solid {vc};border-radius:8px;padding:16px;text-align:center;">
     <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Verdict</div>
-    <div style="font-size:18px;font-weight:700;color:{{vc}};">{{verdict}}</div>
-    <div style="font-size:10px;color:#555;margin-top:4px;">{{confidence}} confidence</div>
+    <div style="font-size:18px;font-weight:700;color:{vc};">{verdict}</div>
+    <div style="font-size:10px;color:#555;margin-top:4px;">{confidence} confidence</div>
   </div>
 </div>
 
@@ -1166,18 +1174,18 @@ def render_research_card(row, research, news, edge_score, df_all):
   <div style="font-size:10px;color:#444;margin-top:6px;text-align:center;">If correct, current price of {cp:.0%} is outside this range → potential edge</div>
 </div>
 
-<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-left:3px solid {{vc}};border-radius:6px;padding:16px;margin-bottom:12px;">
-  <div style="font-size:11px;color:#888;line-height:1.7;">{{reasoning}}</div>
+<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-left:3px solid {vc};border-radius:6px;padding:16px;margin-bottom:12px;">
+  <div style="font-size:11px;color:#888;line-height:1.7;">{reasoning}</div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
   <div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:6px;padding:12px;">
     <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Key Risk</div>
-    <div style="font-size:12px;color:#CCC;">{{key_risk}}</div>
+    <div style="font-size:12px;color:#CCC;">{key_risk}</div>
   </div>
   <div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:6px;padding:12px;">
     <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Historical Base Rate</div>
-    <div style="font-size:12px;color:#CCC;">{{base_rate}}</div>
+    <div style="font-size:12px;color:#CCC;">{base_rate}</div>
   </div>
   <div style="background:#0D0D0D;border:1px solid {liq_color}22;border-radius:6px;padding:12px;">
     <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Liquidity</div>
@@ -1185,16 +1193,7 @@ def render_research_card(row, research, news, edge_score, df_all):
     <div style="font-size:10px;color:#555;margin-top:2px;">{liq_desc}</div>
   </div>
 </div>
-{{% if narrative_flag %}}
-<div style="background:#1A0F00;border:1px solid #F59E0B44;border-left:3px solid #F59E0B;border-radius:6px;padding:14px;margin-bottom:12px;">
-  <div style="font-size:10px;color:#F59E0B;letter-spacing:0.1em;font-weight:700;text-transform:uppercase;margin-bottom:4px;">⚠️ Narrative Gap Detected</div>
-  <div style="font-size:12px;color:#CCC;">{{narrative_reason}}</div>
-</div>
-{{% endif %}}""".format(
-            diff_color=diff_color, diff_str=diff_str, vc=vc, verdict=verdict,
-            confidence=confidence, reasoning=reasoning, key_risk=key_risk,
-            base_rate=base_rate, narrative_flag=narrative_flag, narrative_reason=narrative_reason
-        )
+{narrative_html}"""
     else:
         verdict_html = f"""
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
