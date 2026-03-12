@@ -784,64 +784,50 @@ with tab3:
 
 def enrich_title_with_context(title, ticker, close_time):
     """
-    Parse Kalshi event_ticker to extract opponent/game context and append to title.
-    Patterns: KXLUKA-26MAR12-LAL-BOS → "(vs BOS · 12 Mar)"
-              KXLEBRON-26MAR15-MIA → "(vs MIA · 15 Mar)"
-              KXCL-26MAR12-ARSENAL-PSG → "(Arsenal vs PSG · 12 Mar)"
+    Parse Kalshi ticker to extract game matchup.
+    Format: KXNBA3PT-26MAR10BOSSAS-BOSJBROWN7-4
+      - 26MAR10BOSSAS = Mar 10, BOS vs SAS (two 3-letter codes concatenated)
     """
     import re
     if not ticker or not isinstance(ticker, str):
         return title
-
-    # Already has opponent in title
-    if " vs " in title.lower() or "against" in title.lower():
+    if " vs " in title.lower():
         return title
 
-    # Parse date from ticker — pattern: 26MAR12 = Mar 12 2026
+    t = ticker.upper()
+
+    # Find segment containing date — e.g. "26MAR10BOSSAS"
+    date_seg_match = re.search(r'(\d{2}(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2})([A-Z]+)?', t)
+    if not date_seg_match:
+        return title
+
+    month_names = {"JAN":"Jan","FEB":"Feb","MAR":"Mar","APR":"Apr","MAY":"May","JUN":"Jun",
+                   "JUL":"Jul","AUG":"Aug","SEP":"Sep","OCT":"Oct","NOV":"Nov","DEC":"Dec"}
+    date_part = date_seg_match.group(1)  # e.g. "26MAR10"
+    team_str  = date_seg_match.group(2) or ""  # e.g. "BOSSAS"
+
+    # Parse date
+    d_match = re.match(r'\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{2})', date_part)
     date_str = ""
-    date_match = re.search(r'\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{2})', ticker.upper())
-    if date_match:
-        month = date_match.group(1)
-        day   = date_match.group(2)
-        date_str = f"{int(day)} {month.capitalize()}"
+    if d_match:
+        date_str = f"{int(d_match.group(2))} {month_names[d_match.group(1)]}"
 
-    # Extract team abbreviations after the date — e.g. LAL-BOS, MIA, ARSENAL-PSG
-    parts = ticker.upper().split("-")
-    # Find date part index
-    date_idx = None
-    for i, p in enumerate(parts):
-        if re.search(r'(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)', p):
-            date_idx = i
-            break
+    # Parse teams — 6 chars = two 3-letter codes, e.g. BOSSAS = BOS + SAS
+    context = ""
+    if len(team_str) == 6:
+        t1, t2 = team_str[:3], team_str[3:]
+        context = f"({t1} vs {t2}"
+    elif len(team_str) == 3:
+        context = f"(vs {team_str}"
 
-    teams = []
-    if date_idx is not None:
-        # Everything after the date segment is team info
-        team_parts = parts[date_idx+1:]
-        # Filter out option suffixes (single words like WHAT, YES, NO, TRIA etc)
-        known_suffixes = {"WHAT","YES","NO","TRIA","TRAI","OVER","UNDER","MORE","LESS","WIN","LOSE"}
-        teams = [p for p in team_parts if p not in known_suffixes and len(p) >= 2 and len(p) <= 8]
-
-    if not teams and not date_str:
+    if context and date_str:
+        context += f" · {date_str})"
+    elif context:
+        context += ")"
+    elif date_str:
+        context = f"({date_str})"
+    else:
         return title
-
-    if len(teams) == 2:
-        context = f"({teams[0]} vs {teams[1]}"
-    elif len(teams) == 1:
-        context = f"(vs {teams[0]}"
-    else:
-        context = f"("
-
-    if date_str:
-        if context == "(":
-            context = f"({date_str})"
-        else:
-            context += f" · {date_str})"
-    else:
-        if context != "(":
-            context += ")"
-        else:
-            return title
 
     return f"{title} {context}"
 
@@ -970,16 +956,25 @@ def generate_market_research(market_title, current_price, category, edge_score, 
     else:
         news_block = "No recent news found."
 
-    system = """You are a sharp prediction market analyst. Your job is to assess whether a prediction market is fairly priced.
-Be concise, direct, and data-driven. No fluff. Think like a quant who also reads the news.
+    system = """You are an elite prediction market analyst — think Nate Silver meets a sharp sports bettor.
+Your job: assess whether a market is mispriced given ALL available evidence.
+
+Rules:
+- Be brutally specific. If a team lost 3-0 in the first leg, say that. If a player is injured, say that. If a candidate is up 12 points in polls, say that.
+- Reference the news headlines directly if they are relevant — quote the key fact, not vague summaries.
+- Never say "market may be mispriced" — give a verdict and own it.
+- Price drift is a signal: if a market dropped 40%, something happened. Identify what.
+- Use base rates aggressively: "Teams down 3-0 after first leg advance ~2% of the time historically."
+- Fair value should reflect your actual probability estimate, not just echo the current price.
+
 Return ONLY a valid JSON object with exactly these fields:
 {
-  "fair_value": <float 0.01-0.99, your estimate of true probability>,
+  "fair_value": <float 0.01-0.99, your genuine probability estimate — not just the current price>,
   "verdict": "OVERPRICED" | "UNDERPRICED" | "FAIRLY PRICED",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "reasoning": "<2-3 sharp sentences explaining your verdict. Reference the news if relevant. Be specific.>",
-  "key_risk": "<single biggest factor that could make you wrong>",
-  "base_rate": "<relevant historical base rate if you know one, e.g. incumbents win 70% of elections, or N/A>"
+  "reasoning": "<2-3 razor-sharp sentences. Name the specific event, score, or data point driving your view. No vagueness.>",
+  "key_risk": "<the single most specific factor that could flip this — e.g. 'Haaland returns from injury', not 'team performance'>",
+  "base_rate": "<hard historical stat if you know one — e.g. 'Teams trailing 3-0 after first leg have advanced in ~2% of CL ties historically'>"
 }"""
 
     prompt = f"""Market: {market_title}
@@ -988,10 +983,12 @@ Category: {category}
 Edge score: {edge_score}/100
 Price change: {price_change_pct:+.1f}% since first observed
 
-Recent news:
+IMPORTANT: A price change of {price_change_pct:+.1f}% is a strong signal. If it is a large move, something specific happened — identify it from the news and name it explicitly in your reasoning.
+
+Recent news headlines (most recent first):
 {news_block}
 
-Assess this market. Is it fairly priced?"""
+Task: Give a sharp, specific verdict. Reference the actual news events by name. If a game result, score, or specific development is visible in the headlines, cite it directly."""
 
     try:
         r = requests.post(
@@ -1133,6 +1130,12 @@ with tab4:
 
     # ── filter markets ────────────────────────────────────────────────────────
     df_res = df_markets.copy()
+    # Filter out markets that have already closed
+    now_utc = pd.Timestamp.now(tz="UTC")
+    df_res = df_res[
+        pd.to_datetime(df_res["close_time"], errors="coerce", utc=True).isna() |
+        (pd.to_datetime(df_res["close_time"], errors="coerce", utc=True) > now_utc)
+    ]
     if research_cat != "All":
         df_res = df_res[df_res["category"] == research_cat]
     if research_src == "Polymarket":
