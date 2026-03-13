@@ -2,7 +2,7 @@ name: Run Collector
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -18,6 +18,14 @@ jobs:
 
       - name: Install dependencies
         run: pip install requests pandas supabase
+
+      - name: Check secrets are loaded
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then echo "ERROR: SUPABASE_URL is empty"; else echo "SUPABASE_URL is set"; fi
+          if [ -z "$SUPABASE_KEY" ]; then echo "ERROR: SUPABASE_KEY is empty"; else echo "SUPABASE_KEY is set"; fi
 
       - name: Run collector
         env:
