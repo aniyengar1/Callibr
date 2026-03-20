@@ -1341,7 +1341,8 @@ with tab4:
     if not df_res.empty:
         df_res = df_res.copy()
         df_res["edge_score"] = df_res.apply(lambda r: compute_edge_score(r, df_markets), axis=1)
-        df_res = df_res.sort_values("edge_score", ascending=False).reset_index(drop=True)
+        df_res["_sort_days"] = df_res["days_to_close"].fillna(9999)
+        df_res = df_res.sort_values(["_sort_days", "edge_score"], ascending=[True, False]).reset_index(drop=True)
 
     # ── summary bar ───────────────────────────────────────────────────────────
     if not df_res.empty:
@@ -1369,7 +1370,10 @@ with tab4:
             t = re.sub(r'\b(winner|to win|wins|spread|moneyline|total|over|under|by \d[\d-]*)\s*$', '', t, flags=re.IGNORECASE).strip()
             return t if t else title
 
-        display_df = df_res.head(60).copy()
+        # Always include all near-term markets (≤7 days), fill remainder up to 80 from the rest
+        near_term = df_res[df_res["days_to_close"].between(0, 7, inclusive="both")]
+        the_rest   = df_res[~df_res.index.isin(near_term.index)]
+        display_df = pd.concat([near_term, the_rest]).head(80).copy()
         _closes_dt = pd.to_datetime(display_df["close_time"], errors="coerce", utc=True)
         display_df["Closes"] = _closes_dt.dt.strftime("%d %b").str.lstrip("0").replace("", "—")
         display_df["enriched_title"] = display_df.apply(
@@ -1380,24 +1384,34 @@ with tab4:
         # When a search is active, show grouped view; otherwise flat table
         if search_query.strip():
             st.markdown("### Markets by Event")
-            groups = display_df.groupby("event_group", sort=False)
-            # Sort groups by best edge score within each group
-            group_best = display_df.groupby("event_group")["edge_score"].max().sort_values(ascending=False)
+            # Sort groups by proximity first, then best edge score
+            group_min_days = display_df.groupby("event_group")["days_to_close"].min()
+            group_best_edge = display_df.groupby("event_group")["edge_score"].max()
+            group_order = pd.DataFrame({"min_days": group_min_days, "best_edge": group_best_edge})
+            group_order = group_order.sort_values(["min_days", "best_edge"], ascending=[True, False], na_position="last")
 
-            for event_name in group_best.index:
+            for event_name in group_order.index:
                 grp = display_df[display_df["event_group"] == event_name].sort_values("edge_score", ascending=False)
                 best_edge = int(grp["edge_score"].max())
                 ec = edge_score_color(best_edge)
                 closes = grp["Closes"].iloc[0]
                 src_icons = " ".join(grp["source"].map({"polymarket": "🟣", "kalshi": "🔵"}).unique().tolist())
                 n_bets = len(grp)
+                # Temporal badge
+                _grp_days = group_order.loc[event_name, "min_days"]
+                if pd.notna(_grp_days) and _grp_days <= 0:
+                    _time_badge = " <span style='background:#00C2A8;color:#000;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;'>TODAY</span>"
+                elif pd.notna(_grp_days) and _grp_days <= 3:
+                    _time_badge = " <span style='background:#F59E0B;color:#000;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;'>THIS WEEK</span>"
+                else:
+                    _time_badge = ""
 
                 # Event header
                 st.markdown(f"""
 <div style="background:#111;border:1px solid #1E1E1E;border-left:3px solid {ec};border-radius:8px;padding:14px 18px;margin-bottom:2px;">
   <div style="display:flex;justify-content:space-between;align-items:center;">
     <div>
-      <div style="font-size:15px;font-weight:600;color:#FFF;">{event_name}</div>
+      <div style="font-size:15px;font-weight:600;color:#FFF;">{event_name}{_time_badge}</div>
       <div style="font-size:11px;color:#555;margin-top:3px;">{src_icons} · Closes {closes} · {n_bets} market{"s" if n_bets != 1 else ""}</div>
     </div>
     <div style="text-align:right;">
