@@ -1534,16 +1534,6 @@ with tab4:
                         f'padding:8px 0 4px;">{mtype}</div>',
                         unsafe_allow_html=True
                     )
-                    rows_html = (
-                        '<div style="display:flex;justify-content:space-between;padding:4px 0 4px;'
-                        'border-bottom:1px solid #1A1A1A;">'
-                        '<div style="flex:1;font-size:9px;color:#333;letter-spacing:0.08em;">MARKET</div>'
-                        '<div style="font-size:9px;color:#333;letter-spacing:0.08em;width:55px;text-align:right;">PROB</div>'
-                        '<div style="font-size:9px;color:#333;letter-spacing:0.08em;width:65px;text-align:right;">CHANGE</div>'
-                        '<div style="font-size:9px;color:#333;letter-spacing:0.08em;width:45px;text-align:right;">EDGE</div>'
-                        '<div style="width:55px;"></div>'
-                        '</div>'
-                    )
                     for _, bet in type_rows.iterrows():
                         cp        = bet["current_price"]
                         chg       = bet["price_change_pct"]
@@ -1558,19 +1548,68 @@ with tab4:
                             if src == "polymarket"
                             else f"https://kalshi.com/markets/{str(bet['ticker']).split('-')[0].lower()}"
                         )
-                        rows_html += (
-                            f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                            f'padding:8px 0;border-bottom:1px solid #151515;">'
-                            f'<div style="flex:1;font-size:13px;color:#CCC;padding-right:12px;">{title_txt}</div>'
-                            f'<div style="font-size:13px;color:#FFF;font-weight:600;width:55px;text-align:right;">{cp:.0%}</div>'
-                            f'<div style="font-size:12px;color:{chg_color};width:65px;text-align:right;">{chg_str}</div>'
-                            f'<div style="font-size:12px;font-weight:700;color:{bec};width:45px;text-align:right;">{es}</div>'
-                            f'<div style="width:55px;text-align:right;">'
-                            f'<a href="{bet_url}" target="_blank" style="font-size:10px;background:#FFF;color:#000;'
-                            f'padding:4px 8px;border-radius:3px;font-weight:700;text-decoration:none;">Bet →</a>'
-                            f'</div></div>'
+                        _rc = st.columns([5, 1, 1, 1, 1, 2])
+                        _rc[0].markdown(
+                            f'<div style="font-size:13px;color:#CCC;padding:4px 0;">{title_txt}</div>',
+                            unsafe_allow_html=True
                         )
-                    st.markdown(rows_html, unsafe_allow_html=True)
+                        _rc[1].markdown(
+                            f'<div style="font-size:13px;color:#FFF;font-weight:600;padding:4px 0;">{cp:.0%}</div>',
+                            unsafe_allow_html=True
+                        )
+                        _rc[2].markdown(
+                            f'<div style="font-size:12px;color:{chg_color};padding:4px 0;">{chg_str}</div>',
+                            unsafe_allow_html=True
+                        )
+                        _rc[3].markdown(
+                            f'<div style="font-size:12px;font-weight:700;color:{bec};padding:4px 0;">{es}</div>',
+                            unsafe_allow_html=True
+                        )
+                        _rc[4].markdown(
+                            f'<a href="{bet_url}" target="_blank" style="font-size:10px;background:#FFF;'
+                            f'color:#000;padding:4px 8px;border-radius:3px;font-weight:700;'
+                            f'text-decoration:none;display:inline-block;margin-top:2px;">Bet →</a>',
+                            unsafe_allow_html=True
+                        )
+                        if _rc[5].button("🔬 Research", key=f"dr_{bet['ticker']}", help="Run deep research"):
+                            st.session_state["dr_ticker"] = bet["ticker"]
+
+        # ── Inline deep research (triggered by per-row 🔬 buttons) ──────────────
+        if st.session_state.get("dr_ticker"):
+            _dr_ticker = st.session_state["dr_ticker"]
+            _dr_match  = df_res[df_res["ticker"] == _dr_ticker]
+            if not _dr_match.empty:
+                _dr_row  = _dr_match.iloc[0]
+                _dr_edge = int(_dr_row["edge_score"])
+                st.markdown("---")
+                st.markdown(f"### 🔬 Deep Research: {_dr_row['event_ticker']}")
+                with st.spinner("Fetching news and generating analysis..."):
+                    _dr_news_q  = build_news_query(_dr_row["event_ticker"], _dr_row["category"])
+                    _dr_news    = fetch_news(_dr_news_q, max_articles=5)
+                    _dr_stats   = detect_entity_and_fetch_stats(_dr_row["event_ticker"], _dr_row["category"])
+                    _dr_st_txt  = ""
+                    if _dr_stats and _dr_stats.get("games"):
+                        _g = _dr_stats["games"]
+                        if _dr_stats["type"] == "player":
+                            _dr_st_txt = (f"{_dr_stats['player']} ({_dr_stats.get('team','')}) last {len(_g)} games: " +
+                                          ", ".join([f"{x['Date']}: {x['PTS']}pts/{x['REB']}reb/{x['AST']}ast" for x in _g]))
+                        else:
+                            _dr_st_txt = (f"{_dr_stats['team']} last {len(_g)} games: " +
+                                          ", ".join([f"{x['Date']}: {x.get('Score','?')} ({x.get('W/L','?')})" for x in _g]))
+                    import datetime as _dt2
+                    _dr_research = generate_market_research(
+                        market_title=_dr_row["event_ticker"], current_price=_dr_row["current_price"],
+                        category=_dr_row["category"], edge_score=_dr_edge,
+                        price_change_pct=_dr_row["price_change_pct"], news_headlines=_dr_news,
+                        today_date=_dt2.date.today().strftime("%B %d, %Y"),
+                        player_stats_summary=_dr_st_txt,
+                    )
+                if _dr_research and _dr_research.get("_error"):
+                    st.error(f"⚠️ AI verdict failed: {_dr_research['_error']}")
+                    _dr_research = None
+                st.session_state["research_card"]  = render_research_card(_dr_row, _dr_research, _dr_news, _dr_edge, df_markets)
+                st.session_state["research_sports"] = render_stats_card(_dr_stats) if _dr_stats else ""
+            st.session_state["dr_ticker"] = None
 
         st.markdown("---")
         st.markdown("### 🔬 Deep Research")
