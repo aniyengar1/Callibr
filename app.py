@@ -1576,9 +1576,21 @@ with tab4:
         st.markdown("### 🔬 Deep Research")
         st.markdown("<div style='color:#444;font-size:12px;margin-bottom:16px;'>Select any market for full AI analysis — news, fair value, and mispricing verdict.</div>", unsafe_allow_html=True)
 
-        # Market selector uses enriched titles for readability
-        market_options = display_df["event_ticker"].tolist()
-        market_labels  = display_df["enriched_title"].tolist()
+        # Market selector — sorted by game (closest first), grouped with market type context
+        # Sort display_df by game_key order (same order as the expanders above)
+        _game_order = list(game_meta.index)
+        _gk_rank = {gk: i for i, gk in enumerate(_game_order)}
+        _type_rank = {t: i for i, t in enumerate(_TYPE_ORDER)}
+        _sel_df = display_df.copy()
+        _sel_df["_gk_rank"] = _sel_df["game_key"].map(_gk_rank).fillna(999)
+        _sel_df["_mt_rank"] = _sel_df["market_type"].map(_type_rank).fillna(99)
+        _sel_df = _sel_df.sort_values(["_gk_rank", "_mt_rank", "edge_score"], ascending=[True, True, False])
+
+        market_labels  = [
+            f"{row['event_ticker']}  ·  {row['market_type']}  ·  {row['current_price']:.0%}"
+            for _, row in _sel_df.iterrows()
+        ]
+        market_options = _sel_df["event_ticker"].tolist()
         label_to_ticker = dict(zip(market_labels, market_options))
 
         selected_label  = st.selectbox("Select market to research", market_labels, key="res_market_select")
