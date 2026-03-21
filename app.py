@@ -890,13 +890,14 @@ _SIGNAL_PATTERNS = [
     "season wins", "win total",
 ]
 
-def compute_edge_score(row, df_all):
+def compute_edge_score(row, cat_avg_changes):
     """
     Edge Score 0-100. Higher = more likely mispriced / worth researching.
     Returns 0 immediately for:
       - Markets already at near-certain prices (resolving, not mispriced)
       - Novelty/announcer/micro-markets (no research value)
     Boosts markets about game outcomes, winners, totals, spreads.
+    cat_avg_changes: dict of {category: avg_price_change_pct} (precomputed for O(1) lookup)
     """
     cp = row.get("current_price", 0.5)
     title = row.get("event_ticker", "").lower()
@@ -921,7 +922,7 @@ def compute_edge_score(row, df_all):
 
     # 2. Price drift vs category peers — moved more than average = interesting
     cat = row.get("category", "Other")
-    cat_avg_change = df_all[df_all["category"] == cat]["price_change_pct"].mean()
+    cat_avg_change = cat_avg_changes.get(cat, 0)
     own_change = row.get("price_change_pct", 0)
     drift_delta = abs(own_change - cat_avg_change)
     score += min(drift_delta * 0.6, 15)  # max +15
@@ -1381,7 +1382,8 @@ with tab4:
     # ── compute edge scores ───────────────────────────────────────────────────
     if not df_res.empty:
         df_res = df_res.copy()
-        df_res["edge_score"] = df_res.apply(lambda r: compute_edge_score(r, df_markets), axis=1)
+        _cat_avg = df_markets.groupby("category")["price_change_pct"].mean().to_dict()
+        df_res["edge_score"] = df_res.apply(lambda r: compute_edge_score(r, _cat_avg), axis=1)
         df_res["_sort_days"] = df_res["days_to_close"].fillna(9999)
         df_res = df_res.sort_values(["_sort_days", "edge_score"], ascending=[True, False]).reset_index(drop=True)
         # Pre-compute game_key and market_type so the display loop can use them
@@ -1620,6 +1622,7 @@ with tab4:
                 st.session_state["research_sports"]  = render_stats_card(_dr_stats) if _dr_stats else ""
                 st.session_state["dr_ticker_result"] = _dr_ticker
             st.session_state["dr_ticker"] = None
+            st.rerun()
 
         st.markdown("---")
         st.markdown("### 🔬 Deep Research")
