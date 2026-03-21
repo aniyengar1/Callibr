@@ -907,8 +907,10 @@ def compute_edge_score(row, df_all):
         return 0
 
     # 2. Novelty / micro-market — no research value
+    # Exception: game mention markets (contain " vs ") get a floor of 10 so
+    # they surface as "game scheduled" indicators in search results
     if any(p in title for p in _NOISE_PATTERNS):
-        return 0
+        return 10 if " vs " in title else 0
 
     score = 40.0  # baseline (lower than before — earn it)
 
