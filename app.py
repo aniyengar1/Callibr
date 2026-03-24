@@ -332,11 +332,13 @@ def categorize(question):
 @st.cache_data(ttl=300)
 def load_data():
     cutoff = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ts_cutoff = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     all_rows, offset, batch_size = [], 0, 1000
     while True:
         batch = supabase.table("market_prices").select("*")\
             .neq("source", "kalshi_historical")\
             .gte("close_time", cutoff)\
+            .gte("timestamp", ts_cutoff)\
             .order("timestamp", desc=False)\
             .range(offset, offset + batch_size - 1).execute().data
         if not batch: break
@@ -1464,10 +1466,12 @@ with tab4:
                 return "Goal Market"
             return "Market"
 
-        # Always include all near-term markets (≤7 days), fill remainder up to 80 from the rest
+        # When searching, show all matching markets across the full 14-day window.
+        # When browsing (no query), cap at 300 to avoid rendering thousands of expanders.
         near_term = df_res[df_res["days_to_close"].between(0, 7, inclusive="both")]
         the_rest   = df_res[~df_res.index.isin(near_term.index)]
-        display_df = pd.concat([near_term, the_rest]).head(200).copy()
+        _cap = 1000 if search_query.strip() else 300
+        display_df = pd.concat([near_term, the_rest]).head(_cap).copy()
         _closes_dt = pd.to_datetime(display_df["close_time"], errors="coerce", utc=True)
         display_df["Closes"] = _closes_dt.dt.strftime("%d %b").str.lstrip("0").replace("", "—")
         display_df["enriched_title"] = display_df.apply(
