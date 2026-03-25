@@ -1377,7 +1377,8 @@ with tab4:
                         "will","who","what","when","how","does","do","be","and","or","that",
                         "if","its","with","from","this","has","had","have","more","than","over",
                         "under","per","get","got","make","made","new","next","last","top"}
-        # Team nickname → city name aliases used in Kalshi/Polymarket event titles
+        # Team nickname → precise title patterns used in Kalshi/Polymarket event titles.
+        # LA teams use the Kalshi suffix (L = Lakers, C = Clippers) to avoid cross-sport matches.
         _TEAM_ALIASES = {
             "celtics": ["boston"], "knicks": ["new york"], "nets": ["brooklyn"],
             "raptors": ["toronto"], "sixers": ["philadelphia"], "76ers": ["philadelphia"],
@@ -1388,23 +1389,67 @@ with tab4:
             "nuggets": ["denver"], "timberwolves": ["minnesota"], "wolves": ["minnesota"],
             "thunder": ["oklahoma"], "trailblazers": ["portland"], "blazers": ["portland"],
             "jazz": ["utah"], "warriors": ["golden state"],
-            "lakers": ["los angeles"], "clippers": ["los angeles"],
+            # LA teams — use team-specific suffix so NHL Kings / other LA teams don't match
+            "lakers":   ["los angeles l"],   # Kalshi: "Los Angeles L at Indiana"
+            "clippers": ["los angeles c"],   # Kalshi: "Toronto at Los Angeles C"
             "suns": ["phoenix"], "kings": ["sacramento"],
             "mavericks": ["dallas"], "mavs": ["dallas"],
             "rockets": ["houston"], "grizzlies": ["memphis"],
             "pelicans": ["new orleans"], "spurs": ["san antonio"],
         }
-        def _term_matches(title, term):
+        # Kalshi ticker team codes for futures markets (e.g. KXNBA-26-LAL)
+        # where the title says "Will the Los Angeles win..." without L/C suffix
+        _TICKER_CODES = {
+            "lakers": ["LAL"], "clippers": ["LAC"], "celtics": ["BOS"],
+            "knicks": ["NYK"], "nets": ["BKN"], "raptors": ["TOR"],
+            "sixers": ["PHI"], "76ers": ["PHI"], "bulls": ["CHI"],
+            "cavaliers": ["CLE"], "cavs": ["CLE"], "pistons": ["DET"],
+            "pacers": ["IND"], "bucks": ["MIL"], "hawks": ["ATL"],
+            "hornets": ["CHA"], "heat": ["MIA"], "magic": ["ORL"],
+            "wizards": ["WAS"], "nuggets": ["DEN"], "timberwolves": ["MIN"],
+            "wolves": ["MIN"], "thunder": ["OKC"], "trailblazers": ["POR"],
+            "blazers": ["POR"], "jazz": ["UTA"], "warriors": ["GSW"],
+            "lakers": ["LAL"], "clippers": ["LAC"], "suns": ["PHX"],
+            "kings": ["SAC"], "mavericks": ["DAL"], "mavs": ["DAL"],
+            "rockets": ["HOU"], "grizzlies": ["MEM"], "pelicans": ["NOP"],
+            "spurs": ["SAS"],
+        }
+        _NBA_TEAMS    = set(_TEAM_ALIASES.keys())
+        _NHL_KEYWORDS = {"nhl", "stanley cup", "hockey", "ice hockey"}
+        _NHL_TEAMS    = {"kings", "ducks", "sharks", "kings", "coyotes", "flames",
+                         "oilers", "canucks", "golden knights", "kraken", "wild",
+                         "blackhawks", "red wings", "blue jackets", "predators",
+                         "blues", "avalanche", "stars", "jets", "canadiens",
+                         "senators", "maple leafs", "bruins", "sabres", "rangers",
+                         "islanders", "devils", "flyers", "penguins", "capitals",
+                         "hurricanes", "panthers", "lightning", "thrashers"}
+
+        def _term_matches(title, term, ticker=""):
+            # Hard exclusion: NBA team searches must not return NHL markets
+            if term in _NBA_TEAMS and any(kw in title for kw in _NHL_KEYWORDS):
+                return False
             if term in _TEAM_ALIASES:
-                return term in title or any(a in title for a in _TEAM_ALIASES[term])
+                if term in title:
+                    return True
+                if any(a in title for a in _TEAM_ALIASES[term]):
+                    return True
+                # Also check Kalshi ticker team codes for futures (title may just say city)
+                if term in _TICKER_CODES:
+                    t_up = ticker.upper()
+                    if any(code in t_up for code in _TICKER_CODES[term]):
+                        return True
+                return False
             return term in title
 
         terms = [t for t in search_query.lower().split() if len(t) > 1 and t not in _search_stop]
         if not terms:
             terms = [t for t in search_query.lower().split() if len(t) > 1]  # fallback if all stripped
 
-        # AND logic — all meaningful terms must appear in the market title (alias-aware)
-        mask = df_res["event_ticker"].str.lower().apply(lambda t: all(_term_matches(t, term) for term in terms))
+        # AND logic — all meaningful terms must appear in the market title or ticker (alias-aware)
+        mask = df_res.apply(
+            lambda row: all(_term_matches(row["event_ticker"].lower(), term, row.get("ticker", "")) for term in terms),
+            axis=1
+        )
         df_res = df_res[mask]
 
         # Fallback: if AND returns nothing AND we have 2+ terms, relax but require at least
@@ -1423,8 +1468,9 @@ with tab4:
                 df_res_base = df_res_base[df_res_base["source"] == "polymarket"]
             elif research_src == "Kalshi":
                 df_res_base = df_res_base[df_res_base["source"] == "kalshi"]
-            mask_partial = df_res_base["event_ticker"].str.lower().apply(
-                lambda t: sum(1 for term in terms if _term_matches(t, term)) >= min_matches
+            mask_partial = df_res_base.apply(
+                lambda row: sum(1 for term in terms if _term_matches(row["event_ticker"].lower(), term, row.get("ticker", ""))) >= min_matches,
+                axis=1
             )
             df_res = df_res_base[mask_partial]
             if not df_res.empty:
@@ -1516,6 +1562,22 @@ with tab4:
                 return "Goal Market"
             return "Market"
 
+        _MONTH_NUM = {"JAN":1,"FEB":2,"MAR":3,"APR":4,"MAY":5,"JUN":6,
+                      "JUL":7,"AUG":8,"SEP":9,"OCT":10,"NOV":11,"DEC":12}
+        def parse_game_date(game_key):
+            """Parse actual game date from Kalshi game_key (e.g. '26MAR25LALIND' → 2026-03-25).
+            Kalshi NBA markets close ~14 days after game day, so close_time ≠ game date."""
+            import re as _re3
+            m = _re3.match(
+                r'(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{2})',
+                str(game_key)
+            )
+            if m:
+                return pd.Timestamp(year=2000+int(m.group(1)),
+                                    month=_MONTH_NUM[m.group(2)],
+                                    day=int(m.group(3)))
+            return pd.NaT
+
         # When searching, show all matching markets across the full 14-day window.
         # When browsing (no query), cap at 300 to avoid rendering thousands of expanders.
         near_term = df_res[df_res["days_to_close"].between(0, 7, inclusive="both")]
@@ -1564,100 +1626,139 @@ with tab4:
                 closes=("Closes", "first"),
                 n_markets=("ticker", "count"),
             )
-            .sort_values(["min_days", "best_edge"], ascending=[True, False], na_position="last")
         )
+        # Parse actual game dates (Kalshi NBA markets close ~14 days after game day)
+        _today_norm = pd.Timestamp.now().normalize()
+        game_meta["game_date"]   = game_meta.index.map(parse_game_date)
+        game_meta["days_to_game"] = (game_meta["game_date"] - _today_norm).dt.days
+        # Sort by game/event date first, fall back to market close date, then edge score
+        game_meta["_sort_key"] = game_meta["days_to_game"].where(
+            game_meta["days_to_game"].notna(), game_meta["min_days"]
+        ).fillna(9999)
+        game_meta = game_meta.sort_values(["_sort_key", "best_edge"], ascending=[True, False])
 
-        st.markdown("### Games & Events")
-        for game_key, meta in game_meta.iterrows():
-            grp = display_df[display_df["game_key"] == game_key]
+        # Split into upcoming (game ≤14 days or close ≤14 days) vs long-term
+        _days_ref = game_meta["days_to_game"].where(
+            game_meta["days_to_game"].notna(), game_meta["min_days"]
+        )
+        _upcoming_keys = game_meta[_days_ref.notna() & (_days_ref <= 14)].index
+        _futures_keys  = game_meta[~game_meta.index.isin(_upcoming_keys)].index
 
-            # Representative title: prefer a game/match winner row
-            winner_rows = grp[grp["market_type"].isin(["Game Winner", "Match Winner"])]
-            game_title = (winner_rows.iloc[0]["event_ticker"] if not winner_rows.empty
-                          else grp.iloc[0]["enriched_title"])
+        def _render_game_cards(keys):
+            for game_key in keys:
+                meta = game_meta.loc[game_key]
+                grp = display_df[display_df["game_key"] == game_key]
 
-            best_edge  = int(meta["best_edge"])
-            min_days   = meta["min_days"]
-            n_markets  = int(meta["n_markets"])
-            closes     = meta["closes"]
-            src_icons  = " ".join(grp["source"].map({"polymarket": "🟣", "kalshi": "🔵"}).dropna().unique())
+                # Representative title: prefer a game/match winner row
+                winner_rows = grp[grp["market_type"].isin(["Game Winner", "Match Winner"])]
+                game_title = (winner_rows.iloc[0]["event_ticker"] if not winner_rows.empty
+                              else grp.iloc[0]["enriched_title"])
 
-            badge = (" 🟢 TODAY" if pd.notna(min_days) and min_days <= 0
-                     else " 🟡 THIS WEEK" if pd.notna(min_days) and min_days <= 3
-                     else "")
+                best_edge    = int(meta["best_edge"])
+                min_days     = meta["min_days"]
+                days_to_game = meta["days_to_game"]
+                game_date    = meta["game_date"]
+                n_markets    = int(meta["n_markets"])
+                closes       = meta["closes"]
+                src_icons    = " ".join(grp["source"].map({"polymarket": "🟣", "kalshi": "🔵"}).dropna().unique())
 
-            types_in_grp = [t for t in _TYPE_ORDER if t in grp["market_type"].values]
-            type_chips = "  ".join(
-                f'<span style="background:#1A1A1A;color:#777;font-size:9px;padding:2px 6px;border-radius:3px;">{t}</span>'
-                for t in types_in_grp
-            )
+                # Use game date for urgency when available (Kalshi close_time is ~14d after game)
+                if pd.notna(days_to_game):
+                    badge     = (" 🟢 TONIGHT" if days_to_game <= 0
+                                 else " 🟡 TOMORROW" if days_to_game == 1
+                                 else " 🟡 THIS WEEK" if days_to_game <= 6
+                                 else "")
+                    auto_open = days_to_game <= 1
+                    _gd_str   = f"{int(game_date.day)} {game_date.strftime('%b')}"
+                    date_chip = f"🗓 {_gd_str}"
+                else:
+                    badge     = (" 🟢 TODAY" if pd.notna(min_days) and min_days <= 0
+                                 else " 🟡 THIS WEEK" if pd.notna(min_days) and min_days <= 3
+                                 else "")
+                    auto_open = pd.notna(min_days) and min_days <= 1
+                    date_chip = closes
 
-            exp_label = f"{game_title}{badge}  ·  {closes}  ·  {n_markets} market{'s' if n_markets != 1 else ''}"
-            auto_open = pd.notna(min_days) and min_days <= 1
-
-            with st.expander(exp_label, expanded=auto_open):
-                st.markdown(
-                    f'<div style="margin-bottom:10px;font-size:11px;color:#555;">'
-                    f'{src_icons} &nbsp; {type_chips}</div>',
-                    unsafe_allow_html=True
+                types_in_grp = [t for t in _TYPE_ORDER if t in grp["market_type"].values]
+                type_chips = "  ".join(
+                    f'<span style="background:#1A1A1A;color:#777;font-size:9px;padding:2px 6px;border-radius:3px;">{t}</span>'
+                    for t in types_in_grp
                 )
-                for mtype in _TYPE_ORDER:
-                    type_rows = grp[grp["market_type"] == mtype].sort_values("edge_score", ascending=False)
-                    if type_rows.empty:
-                        continue
+
+                exp_label = f"{game_title}{badge}  ·  {date_chip}  ·  {n_markets} market{'s' if n_markets != 1 else ''}"
+
+                with st.expander(exp_label, expanded=auto_open):
                     st.markdown(
-                        f'<div style="font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;'
-                        f'padding:8px 0 4px;">{mtype}</div>',
+                        f'<div style="margin-bottom:10px;font-size:11px;color:#555;">'
+                        f'{src_icons} &nbsp; {type_chips}</div>',
                         unsafe_allow_html=True
                     )
-                    for _, bet in type_rows.iterrows():
-                        cp        = bet["current_price"]
-                        chg       = bet["price_change_pct"]
-                        es        = int(bet["edge_score"])
-                        bec       = edge_score_color(es)
-                        chg_color = "#00C2A8" if chg > 0 else "#DC2626"
-                        chg_str   = f"+{chg:.1f}%" if chg > 0 else f"{chg:.1f}%"
-                        title_txt = bet["event_ticker"]
-                        src       = bet["source"]
-                        bet_url   = (
-                            f"https://polymarket.com/event/{bet['ticker']}"
-                            if src == "polymarket"
-                            else f"https://kalshi.com/markets/{str(bet['ticker']).split('-')[0].lower()}"
-                        )
-                        _rc = st.columns([5, 1, 1, 1, 1, 2])
-                        _rc[0].markdown(
-                            f'<div style="font-size:13px;color:#CCC;padding:4px 0;">{title_txt}</div>',
+                    for mtype in _TYPE_ORDER:
+                        type_rows = grp[grp["market_type"] == mtype].sort_values("edge_score", ascending=False)
+                        if type_rows.empty:
+                            continue
+                        st.markdown(
+                            f'<div style="font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;'
+                            f'padding:8px 0 4px;">{mtype}</div>',
                             unsafe_allow_html=True
                         )
-                        _rc[1].markdown(
-                            f'<div style="font-size:13px;color:#FFF;font-weight:600;padding:4px 0;">{cp:.0%}</div>',
-                            unsafe_allow_html=True
-                        )
-                        _rc[2].markdown(
-                            f'<div style="font-size:12px;color:{chg_color};padding:4px 0;">{chg_str}</div>',
-                            unsafe_allow_html=True
-                        )
-                        _rc[3].markdown(
-                            f'<div style="font-size:12px;font-weight:700;color:{bec};padding:4px 0;">{es}</div>',
-                            unsafe_allow_html=True
-                        )
-                        _rc[4].markdown(
-                            f'<a href="{bet_url}" target="_blank" style="font-size:10px;background:#FFF;'
-                            f'color:#000;padding:4px 8px;border-radius:3px;font-weight:700;'
-                            f'text-decoration:none;display:inline-block;margin-top:2px;">Bet →</a>',
-                            unsafe_allow_html=True
-                        )
-                        if _rc[5].button("🔬 Research", key=f"dr_{bet['ticker']}", help="Run deep research"):
-                            st.session_state["dr_ticker"] = bet["ticker"]
-                            st.session_state.pop("dr_ticker_result", None)
-                        # Render research card inline if this row's research is ready
-                        if st.session_state.get("dr_ticker_result") == bet["ticker"] and "research_card" in st.session_state:
-                            st.markdown(st.session_state["research_card"], unsafe_allow_html=True)
-                            if st.session_state.get("research_sports"):
-                                st.markdown(st.session_state["research_sports"], unsafe_allow_html=True)
-                            if st.button("✕ Clear", key=f"clear_dr_{bet['ticker']}"):
-                                for _k in ("research_card", "research_sports", "dr_ticker_result"):
-                                    st.session_state.pop(_k, None)
+                        for _, bet in type_rows.iterrows():
+                            cp        = bet["current_price"]
+                            chg       = bet["price_change_pct"]
+                            es        = int(bet["edge_score"])
+                            bec       = edge_score_color(es)
+                            chg_color = "#00C2A8" if chg > 0 else "#DC2626"
+                            chg_str   = f"+{chg:.1f}%" if chg > 0 else f"{chg:.1f}%"
+                            title_txt = bet["event_ticker"]
+                            src       = bet["source"]
+                            bet_url   = (
+                                f"https://polymarket.com/event/{bet['ticker']}"
+                                if src == "polymarket"
+                                else f"https://kalshi.com/markets/{str(bet['ticker']).split('-')[0].lower()}"
+                            )
+                            _rc = st.columns([5, 1, 1, 1, 1, 2])
+                            _rc[0].markdown(
+                                f'<div style="font-size:13px;color:#CCC;padding:4px 0;">{title_txt}</div>',
+                                unsafe_allow_html=True
+                            )
+                            _rc[1].markdown(
+                                f'<div style="font-size:13px;color:#FFF;font-weight:600;padding:4px 0;">{cp:.0%}</div>',
+                                unsafe_allow_html=True
+                            )
+                            _rc[2].markdown(
+                                f'<div style="font-size:12px;color:{chg_color};padding:4px 0;">{chg_str}</div>',
+                                unsafe_allow_html=True
+                            )
+                            _rc[3].markdown(
+                                f'<div style="font-size:12px;font-weight:700;color:{bec};padding:4px 0;">{es}</div>',
+                                unsafe_allow_html=True
+                            )
+                            _rc[4].markdown(
+                                f'<a href="{bet_url}" target="_blank" style="font-size:10px;background:#FFF;'
+                                f'color:#000;padding:4px 8px;border-radius:3px;font-weight:700;'
+                                f'text-decoration:none;display:inline-block;margin-top:2px;">Bet →</a>',
+                                unsafe_allow_html=True
+                            )
+                            if _rc[5].button("🔬 Research", key=f"dr_{bet['ticker']}", help="Run deep research"):
+                                st.session_state["dr_ticker"] = bet["ticker"]
+                                st.session_state.pop("dr_ticker_result", None)
+                            # Render research card inline if this row's research is ready
+                            if st.session_state.get("dr_ticker_result") == bet["ticker"] and "research_card" in st.session_state:
+                                st.markdown(st.session_state["research_card"], unsafe_allow_html=True)
+                                if st.session_state.get("research_sports"):
+                                    st.markdown(st.session_state["research_sports"], unsafe_allow_html=True)
+                                if st.button("✕ Clear", key=f"clear_dr_{bet['ticker']}"):
+                                    for _k in ("research_card", "research_sports", "dr_ticker_result"):
+                                        st.session_state.pop(_k, None)
+
+        if _upcoming_keys.any():
+            st.markdown("### 📅 Upcoming Games")
+            st.caption("Game-specific markets closing within 14 days.")
+            _render_game_cards(_upcoming_keys)
+
+        if _futures_keys.any():
+            st.markdown("### 📊 Season & Futures")
+            st.caption("Long-term markets, season totals, and futures.")
+            _render_game_cards(_futures_keys)
 
         # ── Inline deep research (triggered by per-row 🔬 buttons) ──────────────
         if st.session_state.get("dr_ticker"):
