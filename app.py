@@ -712,6 +712,53 @@ def compute_edge_score(row, cat_avg_changes):
     elif snap <= 1: score -= 5
     return min(max(round(score), 0), 100)
 
+def compute_edge_score_breakdown(row, cat_avg_changes):
+    """Returns a dict of labelled component contributions for display."""
+    cp    = row.get("current_price", 0.5)
+    title = row.get("event_ticker", "").lower()
+    parts = {}
+    parts["Base"] = 40
+    mid       = row.get("mid_price", cp)
+    div       = abs(cp - mid)
+    parts["Divergence"] = round(min(div * 80, 25))
+    cat            = row.get("category", "Other")
+    cat_avg_change = cat_avg_changes.get(cat, 0)
+    own_change     = row.get("price_change_pct", 0)
+    parts["Drift vs category"] = round(min(abs(own_change - cat_avg_change) * 0.6, 15))
+    if cp < 0.25 or cp > 0.75:
+        parts["Price zone"] = 8
+    elif 0.38 <= cp <= 0.62:
+        parts["Price zone"] = -8
+    else:
+        parts["Price zone"] = 0
+    parts["Signal keywords"] = 10 if any(p in title for p in _SIGNAL_PATTERNS) else 0
+    days = row.get("days_to_close", 30)
+    if days is not None and not pd.isna(days):
+        parts["Urgency"] = 12 if days <= 3 else (7 if days <= 7 else (3 if days <= 14 else 0))
+    else:
+        parts["Urgency"] = 0
+    snap = row.get("snapshot_count", 1)
+    parts["Liquidity"] = 5 if snap >= 5 else (-5 if snap <= 1 else 0)
+    return parts
+
+def extract_event_group(title):
+    """Strip outcome token to get the parent event name (used for game_key grouping)."""
+    import re
+    t = title.strip()
+    t = re.sub(r'\?\s*$', '', t).strip()
+    t = re.sub(r'\s*\(.*?\)\s*$', '', t).strip()
+    t = re.sub(r'\b(winner|to win|wins|spread|moneyline|total|over|under|by \d[\d-]*)\s*$', '', t, flags=re.IGNORECASE).strip()
+    return t if t else title
+
+def extract_game_key_global(ticker, event_ticker):
+    """Extract stable game key from Kalshi tickers; falls back to normalised event title."""
+    import re as _re
+    if ticker and isinstance(ticker, str):
+        m = _re.search(r'(\d{2}(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2})([A-Z]{6})', ticker.upper())
+        if m:
+            return m.group(0)
+    return extract_event_group(event_ticker)
+
 def edge_score_color(score):
     if score >= 75: return "#00C2A8"
     elif score >= 55: return "#F59E0B"
@@ -726,7 +773,14 @@ def edge_score_label(score):
 # TAB 1 — OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
-    st.markdown("## Market Overview")
+    st.markdown(
+        f"## Market Overview &nbsp;&nbsp;"
+        f"<span style='background:{_fc};color:#000;font-size:10px;font-weight:700;"
+        f"padding:2px 10px;border-radius:12px;vertical-align:middle;'>{_fl}</span>"
+        f"<span style='color:#444;font-size:11px;margin-left:8px;vertical-align:middle;'>"
+        f"updated {_last_ts_str[:16] if _last_ts_str else '—'} UTC</span>",
+        unsafe_allow_html=True
+    )
 
     f1, f2, f3, f4 = st.columns(4)
     with f1: min_prob = st.slider("Min probability", 0.0, 1.0, 0.05, 0.05, key="ov_min")
@@ -838,53 +892,105 @@ with tab1:
     st.dataframe(top_movers.reset_index(drop=True), use_container_width=True)
 
     st.markdown("---")
-    # ── helper to render a market table ──────────────────────────────────────
-    def render_market_table(df_t):
+    # ── helper to render a sortable, downloadable market table ───────────────
+    def render_market_table(df_t, table_key="tbl"):
         if df_t.empty:
             st.info("No markets match current filters.")
             return
         disp = df_t[["source","category","event_ticker","current_price","price_change_pct","days_to_close"]].copy()
-        disp["Source"]       = disp["source"].map(SOURCE_LABELS).fillna(disp["source"])
-        disp["Resolves YES"] = disp["current_price"].apply(lambda x: f"{x*100:.0f}%")
-        disp["Change"]       = disp["price_change_pct"].apply(lambda x: f"+{x:.1f}%" if x >= 0 else f"{x:.1f}%")
-        disp["Closes in"]    = disp["days_to_close"].apply(
-            lambda d: f"{int(d)}d" if pd.notna(d) and d >= 0 else ("Expired" if pd.notna(d) else "—")
+        disp["Source"] = disp["source"].map(SOURCE_LABELS).fillna(disp["source"])
+        disp = disp[["Source","category","event_ticker","current_price","price_change_pct","days_to_close"]]
+        disp.columns = ["Source","Category","Market","Resolves YES","Change %","Days to Close"]
+        st.dataframe(
+            disp.reset_index(drop=True),
+            use_container_width=True,
+            column_config={
+                "Resolves YES": st.column_config.NumberColumn("Resolves YES", format="%.0f%%", min_value=0, max_value=1),
+                "Change %":     st.column_config.NumberColumn("Change %",     format="%.1f%%"),
+                "Days to Close":st.column_config.NumberColumn("Days to Close",format="%d d"),
+            }
         )
-        disp = disp[["Source","category","event_ticker","Resolves YES","Change","Closes in"]]
-        disp.columns = ["Source","Category","Market","Resolves YES","Change","Closes in"]
-        st.dataframe(disp.reset_index(drop=True), use_container_width=True)
+        st.download_button(
+            "⬇ Download CSV", disp.to_csv(index=False).encode(),
+            file_name="callibr_markets.csv", mime="text/csv", key=f"dl_{table_key}"
+        )
 
-    # ── Closing Soon — All categories ≤14 days ───────────────────────────────
+    # ── Closing Soon — Next 14 Days ──────────────────────────────────────────
     _closing_soon = df_tables[df_tables["days_to_close"].between(0, 14)].copy()
     if not _closing_soon.empty:
         _closing_soon["edge_score"] = _closing_soon.apply(
             lambda r: compute_edge_score(r, _cat_avg_tab1), axis=1
         )
-        # Sports first (rank 0), then others (rank 1); within each group: days_to_close asc, edge_score desc
-        _closing_soon["_sport_rank"] = (_closing_soon["category"] != "Sports").astype(int)
-        _closing_soon = _closing_soon.sort_values(
-            ["_sport_rank", "days_to_close", "edge_score"],
-            ascending=[True, True, False]
-        ).drop(columns=["_sport_rank"])
-
+        _closing_soon["game_key"] = _closing_soon.apply(
+            lambda r: extract_game_key_global(r["ticker"], r["event_ticker"]), axis=1
+        )
         st.markdown(
             f"### 🔥 Closing Soon — Next 14 Days "
             f"<span style='font-size:14px;color:#555;font-weight:400;'>({len(_closing_soon):,} markets)</span>",
             unsafe_allow_html=True
         )
-        st.caption("All categories closing within 14 days — Sports first, then by urgency and edge score.")
 
-        _cs_disp = _closing_soon[["source","category","event_ticker","current_price","price_change_pct","days_to_close","edge_score"]].copy()
-        _cs_disp["Source"]       = _cs_disp["source"].map(SOURCE_LABELS).fillna(_cs_disp["source"])
-        _cs_disp["Resolves YES"] = _cs_disp["current_price"].apply(lambda x: f"{x*100:.0f}%")
-        _cs_disp["Change"]       = _cs_disp["price_change_pct"].apply(lambda x: f"+{x:.1f}%" if x >= 0 else f"{x:.1f}%")
-        _cs_disp["Closes in"]    = _cs_disp["days_to_close"].apply(
-            lambda d: f"{int(d)}d" if pd.notna(d) and d >= 0 else "—"
+        # ── Sports Games: one card per game ──────────────────────────────────
+        _sports_cs = _closing_soon[_closing_soon["category"] == "Sports"]
+        if not _sports_cs.empty:
+            st.caption("🏆 Sports games — grouped by match, sorted by urgency")
+            _sports_gm = (
+                _sports_cs.groupby("game_key", sort=False)
+                .agg(
+                    best_edge=("edge_score", "max"),
+                    n_markets=("ticker", "count"),
+                    min_days=("days_to_close", "min"),
+                    event_title=("event_ticker", "first"),
+                    source=("source", "first"),
+                )
+                .sort_values(["min_days", "best_edge"], ascending=[True, False])
+            )
+            for _gk, _gm in _sports_gm.iterrows():
+                _grp    = _sports_cs[_sports_cs["game_key"] == _gk]
+                _winner = _grp[_grp["event_ticker"].str.contains("Winner|winner", na=False)]
+                _gtitle = _winner.iloc[0]["event_ticker"] if not _winner.empty else _gm["event_title"]
+                _md     = int(_gm["min_days"])
+                _badge  = " 🟢 TODAY" if _md <= 0 else (" 🟡 TOMORROW" if _md == 1 else
+                          (" 🟡 THIS WEEK" if _md <= 6 else ""))
+                _bec    = edge_score_color(int(_gm["best_edge"]))
+                _src    = SOURCE_LABELS.get(_gm["source"], _gm["source"])
+                _label  = f"{_gtitle}{_badge}  ·  {_md}d  ·  {int(_gm['n_markets'])} markets  ·  Edge {int(_gm['best_edge'])}"
+                with st.expander(_label, expanded=(_md <= 1)):
+                    _grp_disp = _grp[["event_ticker","current_price","price_change_pct","days_to_close","edge_score"]].copy()
+                    _grp_disp.columns = ["Market","Resolves YES","Change %","Days","Edge"]
+                    st.dataframe(
+                        _grp_disp.reset_index(drop=True), use_container_width=True,
+                        column_config={
+                            "Resolves YES": st.column_config.NumberColumn(format="%.0f%%", min_value=0, max_value=1),
+                            "Change %":     st.column_config.NumberColumn(format="%.1f%%"),
+                            "Days":         st.column_config.NumberColumn(format="%d d"),
+                            "Edge":         st.column_config.NumberColumn(format="%d"),
+                        }
+                    )
+
+        # ── Other categories: flat sorted table ──────────────────────────────
+        _other_cs = _closing_soon[_closing_soon["category"] != "Sports"].sort_values(
+            ["days_to_close", "edge_score"], ascending=[True, False]
         )
-        _cs_disp["Edge"]         = _cs_disp["edge_score"].apply(lambda s: f"{int(s)}")
-        _cs_disp = _cs_disp[["Source","category","event_ticker","Resolves YES","Change","Closes in","Edge"]]
-        _cs_disp.columns = ["Source","Category","Market","Resolves YES","Change","Closes in","Edge"]
-        st.dataframe(_cs_disp.reset_index(drop=True), use_container_width=True)
+        if not _other_cs.empty:
+            st.caption("📋 All other categories — click column headers to sort")
+            _cs_disp = _other_cs[["source","category","event_ticker","current_price","price_change_pct","days_to_close","edge_score"]].copy()
+            _cs_disp["Source"] = _cs_disp["source"].map(SOURCE_LABELS).fillna(_cs_disp["source"])
+            _cs_disp = _cs_disp[["Source","category","event_ticker","current_price","price_change_pct","days_to_close","edge_score"]]
+            _cs_disp.columns = ["Source","Category","Market","Resolves YES","Change %","Days to Close","Edge"]
+            st.dataframe(
+                _cs_disp.reset_index(drop=True), use_container_width=True,
+                column_config={
+                    "Resolves YES":  st.column_config.NumberColumn("Resolves YES", format="%.0f%%", min_value=0, max_value=1),
+                    "Change %":      st.column_config.NumberColumn("Change %",     format="%.1f%%"),
+                    "Days to Close": st.column_config.NumberColumn("Days to Close",format="%d d"),
+                    "Edge":          st.column_config.NumberColumn("Edge Score",   format="%d"),
+                }
+            )
+            st.download_button(
+                "⬇ Download CSV", _cs_disp.to_csv(index=False).encode(),
+                file_name="callibr_closing_soon.csv", mime="text/csv", key="dl_closing_soon"
+            )
         st.markdown("---")
 
     # Split into upcoming (≤30 days) and long-term (>30 days)
@@ -954,6 +1060,62 @@ with tab2:
     lc, rc = st.columns(2)
     source_panel(lc, df_poly_markets,   "🟣 Polymarket",    SOURCE_COLORS["polymarket"])
     source_panel(rc, df_kalshi_markets, "🔵 Kalshi (live)", SOURCE_COLORS["kalshi"])
+
+    # ── Cross-exchange arbitrage detection ────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### ⚡ Cross-Exchange Opportunities")
+    st.caption("Same event priced differently on Polymarket vs Kalshi. Larger gap = bigger potential edge.")
+
+    import re as _re_arb
+
+    def _normalise(title):
+        """Lowercase, strip punctuation and common boilerplate for fuzzy matching."""
+        t = title.lower()
+        t = re.sub(r'[^a-z0-9 ]', ' ', t)
+        stops = {"will","the","a","an","in","of","to","by","for","at","on","is","are",
+                 "does","do","who","what","when","win","wins","winner","be"}
+        return " ".join(w for w in t.split() if w not in stops and len(w) > 1)
+
+    _poly_k   = df_poly_markets.copy()
+    _kals_k   = df_kalshi_markets.copy()
+    _poly_k["_norm"] = _poly_k["event_ticker"].apply(_normalise)
+    _kals_k["_norm"] = _kals_k["event_ticker"].apply(_normalise)
+
+    # Keep only the most recent price per ticker on each exchange
+    _poly_k = _poly_k.sort_values("current_price").drop_duplicates("_norm", keep="last")
+    _kals_k = _kals_k.sort_values("current_price").drop_duplicates("_norm", keep="last")
+
+    # Exact normalised-title match
+    _arb = _poly_k.merge(_kals_k, on="_norm", suffixes=("_poly","_kals"))
+    if not _arb.empty:
+        _arb["poly_price"]  = _arb["current_price_poly"]
+        _arb["kals_price"]  = _arb["current_price_kals"]
+        _arb["gap"]         = (_arb["poly_price"] - _arb["kals_price"]).abs()
+        _arb["direction"]   = _arb.apply(
+            lambda r: f"🟣 Poly higher by {r['gap']:.0%}" if r["poly_price"] > r["kals_price"]
+                      else f"🔵 Kalshi higher by {r['gap']:.0%}", axis=1
+        )
+        _arb = _arb[_arb["gap"] >= 0.03].sort_values("gap", ascending=False)
+
+        if not _arb.empty:
+            _arb_disp = _arb[["event_ticker_poly","poly_price","kals_price","gap","direction"]].copy()
+            _arb_disp.columns = ["Market","Poly %","Kalshi %","Gap","Direction"]
+            st.dataframe(
+                _arb_disp.reset_index(drop=True), use_container_width=True,
+                column_config={
+                    "Poly %":   st.column_config.NumberColumn(format="%.0f%%", min_value=0, max_value=1),
+                    "Kalshi %": st.column_config.NumberColumn(format="%.0f%%", min_value=0, max_value=1),
+                    "Gap":      st.column_config.NumberColumn("Gap", format="%.0f%%"),
+                }
+            )
+            st.download_button(
+                "⬇ Download CSV", _arb_disp.to_csv(index=False).encode(),
+                file_name="callibr_arb.csv", mime="text/csv", key="dl_arb"
+            )
+        else:
+            st.info("No cross-exchange gaps ≥3% found right now.")
+    else:
+        st.info("No exact title matches found across exchanges. Markets may be titled differently.")
 
 
 
@@ -1759,8 +1921,14 @@ with tab4:
                                 f'<div style="font-size:12px;color:{chg_color};padding:4px 0;">{chg_str}</div>',
                                 unsafe_allow_html=True
                             )
+                            _bd  = compute_edge_score_breakdown(bet, _cat_avg)
+                            _tip = "\n".join(
+                                f"{'+'if v>0 else ''}{v}  {k}"
+                                for k, v in _bd.items() if v != 0
+                            )
                             _rc[3].markdown(
-                                f'<div style="font-size:12px;font-weight:700;color:{bec};padding:4px 0;">{es}</div>',
+                                f'<div style="font-size:12px;font-weight:700;color:{bec};padding:4px 0;" '
+                                f'title="{_tip}">{es}</div>',
                                 unsafe_allow_html=True
                             )
                             _rc[4].markdown(
@@ -1830,83 +1998,7 @@ with tab4:
             st.session_state["dr_ticker"] = None
             st.rerun()
 
-        st.markdown("---")
-        st.markdown("### 🔬 Deep Research")
-        st.markdown("<div style='color:#444;font-size:12px;margin-bottom:16px;'>Select any market for full AI analysis — news, fair value, and mispricing verdict.</div>", unsafe_allow_html=True)
-
-        # Market selector — sorted by game (closest first), grouped with market type context
-        # Sort display_df by game_key order (same order as the expanders above)
-        _game_order = list(game_meta.index)
-        _gk_rank = {gk: i for i, gk in enumerate(_game_order)}
-        _type_rank = {t: i for i, t in enumerate(_TYPE_ORDER)}
-        _sel_df = display_df.copy()
-        _sel_df["_gk_rank"] = _sel_df["game_key"].map(_gk_rank).fillna(999)
-        _sel_df["_mt_rank"] = _sel_df["market_type"].map(_type_rank).fillna(99)
-        _sel_df = _sel_df.sort_values(["_gk_rank", "_mt_rank", "edge_score"], ascending=[True, True, False])
-
-        market_labels  = [
-            f"{row['event_ticker']}  ·  {row['market_type']}  ·  {row['current_price']:.0%}"
-            for _, row in _sel_df.iterrows()
-        ]
-        market_options = _sel_df["event_ticker"].tolist()
-        label_to_ticker = dict(zip(market_labels, market_options))
-
-        selected_label  = st.selectbox("Select market to research", market_labels, key="res_market_select")
-        selected_market = label_to_ticker.get(selected_label, market_options[0] if market_options else "")
-
-        if st.button("🔬 Run Deep Research", key="run_research"):
-            row = df_res[df_res["event_ticker"] == selected_market].iloc[0]
-            edge = int(row["edge_score"])
-
-            with st.spinner("Fetching news and generating analysis..."):
-                news_query   = build_news_query(row["event_ticker"], row["category"])
-                news         = fetch_news(news_query, max_articles=5)
-                sports_stats = detect_entity_and_fetch_stats(row["event_ticker"], row["category"])
-                # Build compact stats summary for AI prompt
-                stats_text = ""
-                if sports_stats and sports_stats.get("games"):
-                    games = sports_stats["games"]
-                    if sports_stats["type"] == "player":
-                        stats_text = (
-                            f"{sports_stats['player']} ({sports_stats.get('team','')}) "
-                            f"last {len(games)} games: " +
-                            ", ".join([f"{g['Date']}: {g['PTS']}pts/{g['REB']}reb/{g['AST']}ast" for g in games])
-                        )
-                    else:
-                        stats_text = (
-                            f"{sports_stats['team']} last {len(games)} games: " +
-                            ", ".join([f"{g['Date']}: {g.get('Score','?')} ({g.get('W/L','?')})" for g in games])
-                        )
-                import datetime as _dt
-                today_str = _dt.date.today().strftime("%B %d, %Y")
-                research     = generate_market_research(
-                    market_title         = row["event_ticker"],
-                    current_price        = row["current_price"],
-                    category             = row["category"],
-                    edge_score           = edge,
-                    price_change_pct     = row["price_change_pct"],
-                    news_headlines       = news,
-                    today_date           = today_str,
-                    player_stats_summary = stats_text,
-                )
-
-            # Surface API errors visibly instead of silently failing
-            if research and research.get("_error"):
-                st.error(f"⚠️ AI verdict failed: {research['_error']}")
-                research = None
-
-            # Store in session state so tab doesn't switch on rerender
-            st.session_state["research_card"]  = render_research_card(row, research, news, edge, df_markets)
-            st.session_state["research_sports"] = render_stats_card(sports_stats) if sports_stats else ""
-
-        # Render from session state — only for dropdown-triggered research (inline buttons render above)
-        if "research_card" in st.session_state and not st.session_state.get("dr_ticker_result"):
-            st.markdown(st.session_state["research_card"], unsafe_allow_html=True)
-            if st.session_state.get("research_sports"):
-                st.markdown(st.session_state["research_sports"], unsafe_allow_html=True)
-            if st.button("Clear research", key="clear_research"):
-                del st.session_state["research_card"]
-                del st.session_state["research_sports"]
+        st.caption("Click 🔬 Research on any bet row above to run AI analysis inline.")
 
     else:
         if search_query.strip():
