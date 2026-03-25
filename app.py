@@ -373,6 +373,10 @@ def build_markets_df(df):
     df_m["price_std"] = df_m["price_std"].fillna(0)
     return df_m
 
+def filter_skewed(df, min_price=0.01, max_price=0.99):
+    """Remove effectively-resolved markets with no betting edge."""
+    return df[(df["current_price"] > min_price) & (df["current_price"] < max_price)]
+
 def parse_strategy_with_claude(user_input):
     system = """You are a trading strategy parser for a prediction markets backtesting platform.
 Convert the user's plain-English strategy into structured rules.
@@ -577,13 +581,71 @@ df_markets        = build_markets_df(df_live_raw)
 st.sidebar.markdown("## Callibr")
 st.sidebar.markdown("<div style='font-size:11px;color:#444;margin-bottom:16px;'>Find your edge</div>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
-st.sidebar.markdown("### Data Pipeline")
-st.sidebar.metric("Total snapshots", f"{len(df_raw):,}")
-st.sidebar.metric("Last updated",    df_raw["timestamp"].max()[:16])
-st.sidebar.markdown("**Sources**")
-for src in ["polymarket","kalshi","kalshi_historical"]:
-    n = df_raw[df_raw["source"] == src]["ticker"].nunique()
-    st.sidebar.markdown(f"{SOURCE_LABELS[src]}: **{n:,}** markets")
+
+# Data freshness indicator
+_last_ts_str = df_raw["timestamp"].max()
+_last_ts     = pd.to_datetime(_last_ts_str, errors="coerce", utc=True)
+_mins_ago    = int((pd.Timestamp.now(tz="UTC") - _last_ts).total_seconds() / 60) if pd.notna(_last_ts) else 999
+if _mins_ago <= 15:
+    _fc, _fl = "#00C2A8", "LIVE"
+elif _mins_ago <= 60:
+    _fc, _fl = "#F59E0B", f"{_mins_ago}m ago"
+else:
+    _fc, _fl = "#DC2626", f"{_mins_ago // 60}h ago"
+
+st.sidebar.markdown(f"""
+<div style='background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:12px 14px;margin-bottom:10px;'>
+  <div style='font-size:9px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;'>Data Pipeline</div>
+  <div style='display:flex;justify-content:space-between;align-items:center;'>
+    <span style='font-size:22px;font-weight:700;color:#FFF;'>{len(df_raw):,}</span>
+    <span style='font-size:10px;color:#555;'>snapshots</span>
+  </div>
+  <div style='margin-top:8px;display:flex;align-items:center;gap:6px;'>
+    <span style='width:8px;height:8px;border-radius:50%;background:{_fc};display:inline-block;'></span>
+    <span style='font-size:11px;color:{_fc};font-weight:600;'>{_fl}</span>
+    <span style='font-size:10px;color:#444;'>· {_last_ts_str[:16] if _last_ts_str else "—"}</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Source split
+_n_poly   = df_raw[df_raw["source"] == "polymarket"]["ticker"].nunique()
+_n_kalshi = df_raw[df_raw["source"] == "kalshi"]["ticker"].nunique()
+_n_total  = _n_poly + _n_kalshi
+_poly_pct   = int(_n_poly  / _n_total * 100) if _n_total > 0 else 0
+_kalshi_pct = 100 - _poly_pct
+
+st.sidebar.markdown(f"""
+<div style='background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:12px 14px;margin-bottom:10px;'>
+  <div style='font-size:9px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;'>Sources</div>
+  <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
+    <span style='font-size:11px;color:#8B5CF6;font-weight:600;'>🟣 Polymarket</span>
+    <span style='font-size:12px;color:#FFF;font-weight:700;'>{_n_poly:,}</span>
+  </div>
+  <div style='background:#1A1A1A;border-radius:4px;height:4px;margin-bottom:8px;overflow:hidden;'>
+    <div style='background:#8B5CF6;height:4px;width:{_poly_pct}%;border-radius:4px;'></div>
+  </div>
+  <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
+    <span style='font-size:11px;color:#3B82F6;font-weight:600;'>🔵 Kalshi</span>
+    <span style='font-size:12px;color:#FFF;font-weight:700;'>{_n_kalshi:,}</span>
+  </div>
+  <div style='background:#1A1A1A;border-radius:4px;height:4px;overflow:hidden;'>
+    <div style='background:#3B82F6;height:4px;width:{_kalshi_pct}%;border-radius:4px;'></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Mini category bar chart
+_cat_counts = df_markets["category"].value_counts().reset_index()
+_cat_counts.columns = ["Category", "Count"]
+_cat_counts["Category"] = _cat_counts["Category"].replace(
+    {"Politics & Macro": "Politics", "Entertainment & Legal": "Entmt/Legal", "Tech & Markets": "Tech"}
+)
+_fig_sb = px.bar(_cat_counts, x="Count", y="Category", orientation="h", color_discrete_sequence=["#3B82F6"])
+_fig_sb.update_traces(hovertemplate="<b>%{y}</b><br>%{x} markets<extra></extra>")
+apply_layout(_fig_sb, "Markets by Category", height=220)
+_fig_sb.update_layout(margin=dict(l=4, r=4, t=28, b=4), yaxis=dict(tickfont=dict(size=9)))
+st.sidebar.plotly_chart(_fig_sb, use_container_width=True)
 
 # ── tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab4, tab2 = st.tabs([
@@ -691,6 +753,10 @@ with tab1:
     st.plotly_chart(fig_sc, use_container_width=True)
 
     st.markdown("---")
+    # Filter skewed markets from all table sections below (charts/metrics above use unfiltered df)
+    df_tables     = filter_skewed(df)
+    _cat_avg_tab1 = df_markets.groupby("category")["price_change_pct"].mean().to_dict()
+
     st.markdown("### 🔥 Biggest Price Movers")
     top_movers = df_markets.nlargest(10,"price_change_pct")[
         ["event_ticker","source","category","current_price","price_change_pct"]].copy()
@@ -718,24 +784,43 @@ with tab1:
         disp.columns = ["Source","Category","Market","Resolves YES","Change","Closes in"]
         st.dataframe(disp.reset_index(drop=True), use_container_width=True)
 
-    # ── Sports Games This Week ────────────────────────────────────────────────
-    sports_week = (
-        df_markets[
-            (df_markets["category"] == "Sports") &
-            (df_markets["days_to_close"].between(0, 14))
-        ]
-        .sort_values("days_to_close", ascending=True)
-    )
-    if not sports_week.empty:
-        st.markdown(f"### Sports &amp; Games — Next 14 Days &nbsp;<span style='font-size:14px;color:#555;font-weight:400;'>({len(sports_week):,} markets)</span>", unsafe_allow_html=True)
-        st.caption("All sports game markets closing within 14 days, sorted by closest first.")
-        render_market_table(sports_week)
+    # ── Closing Soon — All categories ≤14 days ───────────────────────────────
+    _closing_soon = df_tables[df_tables["days_to_close"].between(0, 14)].copy()
+    if not _closing_soon.empty:
+        _closing_soon["edge_score"] = _closing_soon.apply(
+            lambda r: compute_edge_score(r, _cat_avg_tab1), axis=1
+        )
+        # Sports first (rank 0), then others (rank 1); within each group: days_to_close asc, edge_score desc
+        _closing_soon["_sport_rank"] = (_closing_soon["category"] != "Sports").astype(int)
+        _closing_soon = _closing_soon.sort_values(
+            ["_sport_rank", "days_to_close", "edge_score"],
+            ascending=[True, True, False]
+        ).drop(columns=["_sport_rank"])
+
+        st.markdown(
+            f"### 🔥 Closing Soon — Next 14 Days "
+            f"<span style='font-size:14px;color:#555;font-weight:400;'>({len(_closing_soon):,} markets)</span>",
+            unsafe_allow_html=True
+        )
+        st.caption("All categories closing within 14 days — Sports first, then by urgency and edge score.")
+
+        _cs_disp = _closing_soon[["source","category","event_ticker","current_price","price_change_pct","days_to_close","edge_score"]].copy()
+        _cs_disp["Source"]       = _cs_disp["source"].map(SOURCE_LABELS).fillna(_cs_disp["source"])
+        _cs_disp["Resolves YES"] = _cs_disp["current_price"].apply(lambda x: f"{x*100:.0f}%")
+        _cs_disp["Change"]       = _cs_disp["price_change_pct"].apply(lambda x: f"+{x:.1f}%" if x >= 0 else f"{x:.1f}%")
+        _cs_disp["Closes in"]    = _cs_disp["days_to_close"].apply(
+            lambda d: f"{int(d)}d" if pd.notna(d) and d >= 0 else "—"
+        )
+        _cs_disp["Edge"]         = _cs_disp["edge_score"].apply(lambda s: f"{int(s)}")
+        _cs_disp = _cs_disp[["Source","category","event_ticker","Resolves YES","Change","Closes in","Edge"]]
+        _cs_disp.columns = ["Source","Category","Market","Resolves YES","Change","Closes in","Edge"]
+        st.dataframe(_cs_disp.reset_index(drop=True), use_container_width=True)
         st.markdown("---")
 
     # Split into upcoming (≤30 days) and long-term (>30 days)
-    upcoming = df[df["days_to_close"].between(0, 30)].sort_values("days_to_close", ascending=True)
-    longterm  = df[df["days_to_close"] > 30].sort_values("days_to_close", ascending=True)
-    no_date   = df[df["days_to_close"].isna()]
+    upcoming = df_tables[df_tables["days_to_close"].between(0, 30)].sort_values("days_to_close", ascending=True)
+    longterm  = df_tables[df_tables["days_to_close"] > 30].sort_values("days_to_close", ascending=True)
+    no_date   = df_tables[df_tables["days_to_close"].isna()]
 
     # ── Upcoming ─────────────────────────────────────────────────────────────
     st.markdown(f"### ⚡ Upcoming — Next 30 Days &nbsp;<span style='font-size:14px;color:#555;font-weight:400;'>({len(upcoming):,} markets)</span>", unsafe_allow_html=True)
