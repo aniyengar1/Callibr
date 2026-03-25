@@ -759,6 +759,38 @@ def extract_game_key_global(ticker, event_ticker):
             return m.group(0)
     return extract_event_group(event_ticker)
 
+_SPORT_LABELS = {
+    "KXNBAGAME":    "🏀 NBA",   "KXNBA":       "🏀 NBA",
+    "KXNHLGAME":    "🏒 NHL",   "KXNHL":       "🏒 NHL",
+    "KXMLBGAME":    "⚾ MLB",   "KXMLB":       "⚾ MLB",
+    "KXNFLGAME":    "🏈 NFL",   "KXNFL":       "🏈 NFL",
+    "KXEPLGAME":    "⚽ EPL",   "KXEPL":       "⚽ EPL",
+    "KXUCLGAME":    "⚽ UCL",   "KXUCL":       "⚽ UCL",
+    "KXMLSGAME":    "⚽ MLS",   "KXMLS":       "⚽ MLS",
+    "KXNCAABBGAME": "🏀 NCAAB", "KXNCAAB":     "🏀 NCAAB",
+    "KXNCAAWBGAME": "🏀 NCAAW",
+    "KXLALIGAGAME": "⚽ La Liga","KXLALIGA":    "⚽ La Liga",
+    "KXLALIGA2GAME":"⚽ La Liga 2",
+    "KXCBAGAME":    "🏀 CBA",
+    "KXIPLGAME":    "🏏 IPL",
+    "KXFIFAGAME":   "⚽ FIFA",
+    "KXATPMATCH":   "🎾 ATP",   "KXWTAMATCH":  "🎾 WTA",
+    "KXATPCHALLENGERMATCH": "🎾 ATP Challenger",
+    "KXCS2GAME":    "🎮 CS2",
+    "KXCODGAME":    "🎮 CoD",
+}
+
+def get_sport_label(ticker):
+    """Return sport emoji + league from Kalshi ticker prefix, e.g. '🏀 NBA'."""
+    if not ticker or not isinstance(ticker, str):
+        return ""
+    t = ticker.upper()
+    # Try longest prefix first to avoid KXNBA matching KXNBAGAME
+    for prefix in sorted(_SPORT_LABELS, key=len, reverse=True):
+        if t.startswith(prefix):
+            return _SPORT_LABELS[prefix]
+    return ""
+
 def edge_score_color(score):
     if score >= 75: return "#00C2A8"
     elif score >= 55: return "#F59E0B"
@@ -952,9 +984,9 @@ with tab1:
                 _md     = int(_gm["min_days"])
                 _badge  = " 🟢 TODAY" if _md <= 0 else (" 🟡 TOMORROW" if _md == 1 else
                           (" 🟡 THIS WEEK" if _md <= 6 else ""))
-                _bec    = edge_score_color(int(_gm["best_edge"]))
-                _src    = SOURCE_LABELS.get(_gm["source"], _gm["source"])
-                _label  = f"{_gtitle}{_badge}  ·  {_md}d  ·  {int(_gm['n_markets'])} markets  ·  Edge {int(_gm['best_edge'])}"
+                _sport  = get_sport_label(_grp.iloc[0]["ticker"]) if not _grp.empty else ""
+                _sport_tag = f"[{_sport}]  " if _sport else ""
+                _label  = f"{_sport_tag}{_gtitle}{_badge}  ·  {_md}d  ·  {int(_gm['n_markets'])} markets  ·  Edge {int(_gm['best_edge'])}"
                 with st.expander(_label, expanded=(_md <= 1)):
                     _grp_disp = _grp[["event_ticker","current_price","price_change_pct","days_to_close","edge_score"]].copy()
                     _grp_disp.columns = ["Market","Resolves YES","Change %","Days","Edge"]
@@ -1871,7 +1903,9 @@ with tab4:
                     for t in types_in_grp
                 )
 
-                exp_label = f"{game_title}{badge}  ·  {date_chip}  ·  {n_markets} market{'s' if n_markets != 1 else ''}"
+                _sport_lbl  = get_sport_label(grp.iloc[0]["ticker"]) if not grp.empty else ""
+                _sport_pfx  = f"[{_sport_lbl}]  " if _sport_lbl else ""
+                exp_label = f"{_sport_pfx}{game_title}{badge}  ·  {date_chip}  ·  {n_markets} market{'s' if n_markets != 1 else ''}"
 
                 with st.expander(exp_label, expanded=auto_open):
                     st.markdown(
