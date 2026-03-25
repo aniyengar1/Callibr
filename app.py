@@ -1001,19 +1001,19 @@ with tab1:
     # ── Upcoming ─────────────────────────────────────────────────────────────
     st.markdown(f"### ⚡ Upcoming — Next 30 Days &nbsp;<span style='font-size:14px;color:#555;font-weight:400;'>({len(upcoming):,} markets)</span>", unsafe_allow_html=True)
     st.caption("Sorted by urgency — closest to closing first.")
-    render_market_table(upcoming)
+    render_market_table(upcoming, "upcoming")
 
     st.markdown("---")
 
     # ── Long-term ─────────────────────────────────────────────────────────────
     with st.expander(f"📅  Long-term Markets — 30+ Days  ({len(longterm):,} markets)", expanded=False):
         st.caption("Sorted by closest close date first.")
-        render_market_table(longterm)
+        render_market_table(longterm, "longterm")
 
     # ── No close date ─────────────────────────────────────────────────────────
     if not no_date.empty:
         with st.expander(f"❔  No Close Date  ({len(no_date):,} markets)", expanded=False):
-            render_market_table(no_date)
+            render_market_table(no_date, "nodate")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 — SOURCES
