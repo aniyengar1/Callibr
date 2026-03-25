@@ -652,6 +652,76 @@ tab1, tab4, tab2 = st.tabs([
     "📊 Overview", "🔍 Market Research", "🔀 Sources"
 ])
 
+# ── edge score helpers (defined here so tab1 + tab4 can both use them) ───────
+_NOISE_PATTERNS = [
+    "first half", "1st half", "second half", "2nd half",
+    "first quarter", "1st quarter", "second quarter", "2nd quarter",
+    "third quarter", "3rd quarter", "fourth quarter", "4th quarter",
+    "first period", "1st period", "second period", "2nd period", "third period", "3rd period",
+    "halftime", "half time", "half-time",
+    "next goal", "next score", "next basket", "next point", "next touchdown",
+    "next team to score", "anytime scorer",
+    "announcer", "will the announcer", "commentator",
+    "will anyone say", "will a player say", "will the broadcast",
+    "will the crowd", "will fans",
+    "celebration", "will celebrate", "dunk celebration",
+    "will shake hands", "will hug",
+    "will be ejected", "will get ejected", "will be removed",
+    "live ", "in-game", "in game",
+]
+_SIGNAL_PATTERNS = [
+    "winner", "win the", "will win",
+    "total points", "total goals", "total score",
+    "spread", "cover", "over/under", "over under",
+    "moneyline", "money line",
+    "advance", "qualify", "make the",
+    "championship", "finals", "playoffs", "postseason",
+    "mvp", "most valuable",
+    "season wins", "win total",
+]
+
+def compute_edge_score(row, cat_avg_changes):
+    cp = row.get("current_price", 0.5)
+    title = row.get("event_ticker", "").lower()
+    if cp <= 0.15 or cp >= 0.85:
+        return 0
+    if any(p in title for p in _NOISE_PATTERNS):
+        return 10 if " vs " in title else 0
+    score = 40.0
+    mid = row.get("mid_price", cp)
+    divergence = abs(cp - mid)
+    score += min(divergence * 80, 25)
+    cat = row.get("category", "Other")
+    cat_avg_change = cat_avg_changes.get(cat, 0)
+    own_change = row.get("price_change_pct", 0)
+    drift_delta = abs(own_change - cat_avg_change)
+    score += min(drift_delta * 0.6, 15)
+    if cp < 0.25 or cp > 0.75:
+        score += 8
+    elif 0.38 <= cp <= 0.62:
+        score -= 8
+    if any(p in title for p in _SIGNAL_PATTERNS):
+        score += 10
+    days = row.get("days_to_close", 30)
+    if days is not None and not pd.isna(days):
+        if days <= 3:    score += 12
+        elif days <= 7:  score += 7
+        elif days <= 14: score += 3
+    snap = row.get("snapshot_count", 1)
+    if snap >= 5: score += 5
+    elif snap <= 1: score -= 5
+    return min(max(round(score), 0), 100)
+
+def edge_score_color(score):
+    if score >= 75: return "#00C2A8"
+    elif score >= 55: return "#F59E0B"
+    else: return "#555555"
+
+def edge_score_label(score):
+    if score >= 75: return "STRONG EDGE"
+    elif score >= 55: return "MODERATE"
+    else: return "WEAK"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
@@ -942,112 +1012,6 @@ def enrich_title_with_context(title, ticker, close_time):
 
 # Micro-market title patterns that are in-game noise, not research targets
 # Novelty/micro-market patterns that score 0 — not useful for research
-_NOISE_PATTERNS = [
-    # In-game timing markets
-    "first half", "1st half", "second half", "2nd half",
-    "first quarter", "1st quarter", "second quarter", "2nd quarter",
-    "third quarter", "3rd quarter", "fourth quarter", "4th quarter",
-    "first period", "1st period", "second period", "2nd period", "third period", "3rd period",
-    "halftime", "half time", "half-time",
-    # Next-event micro-markets
-    "next goal", "next score", "next basket", "next point", "next touchdown",
-    "next team to score", "anytime scorer",
-    # Announcer / broadcast novelty markets
-    "announcer", "will the announcer", "commentator",
-    "will anyone say", "will a player say", "will the broadcast",
-    "will the crowd", "will fans",
-    # Celebration / entertainment props
-    "celebration", "will celebrate", "dunk celebration",
-    "will shake hands", "will hug",
-    # Injury/ejection props that aren't pre-game
-    "will be ejected", "will get ejected", "will be removed",
-    # Misc live noise
-    "live ", "in-game", "in game",
-]
-
-# Patterns that signal a meaningful, researchable market — get a score boost
-_SIGNAL_PATTERNS = [
-    "winner", "win the", "will win",
-    "total points", "total goals", "total score",
-    "spread", "cover", "over/under", "over under",
-    "moneyline", "money line",
-    "advance", "qualify", "make the",
-    "championship", "finals", "playoffs", "postseason",
-    "mvp", "most valuable",
-    "season wins", "win total",
-]
-
-def compute_edge_score(row, cat_avg_changes):
-    """
-    Edge Score 0-100. Higher = more likely mispriced / worth researching.
-    Returns 0 immediately for:
-      - Markets already at near-certain prices (resolving, not mispriced)
-      - Novelty/announcer/micro-markets (no research value)
-    Boosts markets about game outcomes, winners, totals, spreads.
-    cat_avg_changes: dict of {category: avg_price_change_pct} (precomputed for O(1) lookup)
-    """
-    cp = row.get("current_price", 0.5)
-    title = row.get("event_ticker", "").lower()
-
-    # Hard disqualifiers — these are not research-worthy
-    # 1. Market is resolving — price at extremes means it's effectively decided
-    if cp <= 0.15 or cp >= 0.85:
-        return 0
-
-    # 2. Novelty / micro-market — no research value
-    # Exception: game mention markets (contain " vs ") get a floor of 10 so
-    # they surface as "game scheduled" indicators in search results
-    if any(p in title for p in _NOISE_PATTERNS):
-        return 10 if " vs " in title else 0
-
-    score = 40.0  # baseline (lower than before — earn it)
-
-    # 1. Opening vs current divergence — the core signal
-    mid = row.get("mid_price", cp)
-    divergence = abs(cp - mid)
-    score += min(divergence * 80, 25)  # max +25
-
-    # 2. Price drift vs category peers — moved more than average = interesting
-    cat = row.get("category", "Other")
-    cat_avg_change = cat_avg_changes.get(cat, 0)
-    own_change = row.get("price_change_pct", 0)
-    drift_delta = abs(own_change - cat_avg_change)
-    score += min(drift_delta * 0.6, 15)  # max +15
-
-    # 3. Contrarian signal — moderate extremes are interesting, but not resolving ones
-    # (resolving ones already killed above at 15%/85%)
-    if cp < 0.25 or cp > 0.75:
-        score += 8   # crowd may be overconfident at these levels
-    elif 0.38 <= cp <= 0.62:
-        score -= 8   # toss-up markets are less interesting for edge finding
-
-    # 4. Signal boost — meaningful market types (winner, total, spread, etc.)
-    if any(p in title for p in _SIGNAL_PATTERNS):
-        score += 10
-
-    # 5. Proximity to close — urgency bonus
-    days = row.get("days_to_close", 30)
-    if days is not None and not pd.isna(days):
-        if days <= 3:    score += 12
-        elif days <= 7:  score += 7
-        elif days <= 14: score += 3
-
-    # 6. Liquidity signal — more snapshots = market is being watched
-    snap = row.get("snapshot_count", 1)
-    if snap >= 5: score += 5
-    elif snap <= 1: score -= 5
-
-    return min(max(round(score), 0), 100)
-
-def edge_score_color(score):
-    if score >= 75: return "#00C2A8"   # teal — strong edge
-    elif score >= 55: return "#F59E0B" # amber — moderate
-    else: return "#555555"              # grey — weak
-
-def edge_score_label(score):
-    if score >= 75: return "STRONG EDGE"
-    elif score >= 55: return "MODERATE"
-    else: return "WEAK"
 
 def build_news_query(market_title, category):
     """Build a tight, specific NewsAPI query from a market title."""
