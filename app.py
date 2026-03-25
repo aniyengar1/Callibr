@@ -1615,6 +1615,31 @@ with tab4:
                 display_df = pd.concat([display_df, _new_rows], ignore_index=True)
 
         # ── Unified game card + expander view ─────────────────────────────────
+        # Maps Kalshi outcome code (ticker suffix) → display name for game winner rows
+        _OUTCOME_NAMES = {
+            # NBA
+            "LAL":"Los Angeles L","LAC":"Los Angeles C","BKN":"Brooklyn","NYK":"New York",
+            "BOS":"Boston","PHI":"Philadelphia","TOR":"Toronto","MIA":"Miami","ORL":"Orlando",
+            "ATL":"Atlanta","CHA":"Charlotte","WAS":"Washington","CHI":"Chicago","CLE":"Cleveland",
+            "DET":"Detroit","IND":"Indiana","MIL":"Milwaukee","MEM":"Memphis","NOP":"New Orleans",
+            "SAS":"San Antonio","HOU":"Houston","DAL":"Dallas","OKC":"Oklahoma City","DEN":"Denver",
+            "MIN":"Minnesota","UTA":"Utah","POR":"Portland","SAC":"Sacramento","PHX":"Phoenix",
+            "GSW":"Golden State",
+            # MLB
+            "LAD":"Los Angeles D","LAA":"Los Angeles A","NYY":"New York Y","NYM":"New York M",
+            "CHC":"Chicago C","CWS":"Chicago W","STL":"St. Louis","MIL":"Milwaukee",
+            "CIN":"Cincinnati","PIT":"Pittsburgh","SFG":"San Francisco","COL":"Colorado",
+            "ARI":"Arizona","AZ":"Arizona","SDN":"San Diego","HOU":"Houston","ATL":"Atlanta",
+            "MIA":"Miami","NYM":"New York M","PHI":"Philadelphia","WSN":"Washington",
+            "MIN":"Minnesota","CLE":"Cleveland","DET":"Detroit","KCR":"Kansas City",
+            "TBR":"Tampa Bay","BAL":"Baltimore","BOS":"Boston","TOR":"Toronto","TEX":"Texas",
+            "SEA":"Seattle","OAK":"Oakland",
+            # NHL
+            "LAK":"Los Angeles K","ANA":"Anaheim","SJS":"San Jose",
+            # Soccer
+            "TIE":"Draw",
+        }
+
         _TYPE_ORDER = ["Game Winner", "Match Winner", "Spread", "Total Points", "Half Winner",
                        "Lead After Q", "Goal Market", "Player Prop", "Market", "Mention"]
 
@@ -1708,7 +1733,13 @@ with tab4:
                             bec       = edge_score_color(es)
                             chg_color = "#00C2A8" if chg > 0 else "#DC2626"
                             chg_str   = f"+{chg:.1f}%" if chg > 0 else f"{chg:.1f}%"
-                            title_txt = bet["event_ticker"]
+                            # For game/match winners show the outcome team, not the generic title
+                            if mtype in ("Game Winner", "Match Winner"):
+                                _suffix = str(bet["ticker"]).rsplit("-", 1)[-1].upper()
+                                _oname  = _OUTCOME_NAMES.get(_suffix, _suffix)
+                                title_txt = f"{_oname} wins" if _oname != _suffix else bet["event_ticker"]
+                            else:
+                                title_txt = bet["event_ticker"]
                             src       = bet["source"]
                             bet_url   = (
                                 f"https://polymarket.com/event/{bet['ticker']}"
