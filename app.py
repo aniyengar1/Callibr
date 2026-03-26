@@ -519,12 +519,16 @@ def load_data():
     ts_cutoff = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     all_rows, offset, batch_size = [], 0, 1000
     while True:
-        batch = supabase.table("market_prices").select("*")\
-            .neq("source", "kalshi_historical")\
-            .gte("close_time", cutoff)\
-            .gte("timestamp", ts_cutoff)\
-            .order("timestamp", desc=False)\
-            .range(offset, offset + batch_size - 1).execute().data
+        batch = (
+            supabase.table("market_prices").select("*")
+            .neq("source", "kalshi_historical")
+            .gte("close_time", cutoff)
+            .gte("timestamp", ts_cutoff)
+            .order("timestamp", desc=False)
+            .range(offset, offset + batch_size - 1)
+            .execute()
+            .data
+        )
         if not batch: break
         all_rows.extend(batch)
         if len(batch) < batch_size: break
@@ -815,7 +819,15 @@ def render_stats_card(stats):
 </div>"""
 
 # ── load + split data ─────────────────────────────────────────────────────────
-df_raw = load_data()
+try:
+    df_raw = load_data()
+except Exception:
+    st.error("⚠️  Could not reach the data source. This is usually a transient Supabase connection issue.")
+    if st.button("↻  Retry"):
+        st.cache_data.clear()
+        st.rerun()
+    st.stop()
+
 if df_raw.empty:
     st.warning("No data yet."); st.stop()
 
