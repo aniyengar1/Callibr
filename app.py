@@ -2332,8 +2332,19 @@ with tab4:
                 f'color:#4a5060;margin:14px 0 8px 0;">{_ls_label}</div>',
                 unsafe_allow_html=True,
             )
+            # NBA abbreviation → search nickname (for click-to-navigate)
+            _ABR_TO_NICK = {
+                "LAL":"lakers","LAC":"clippers","BOS":"celtics","NYK":"knicks",
+                "BKN":"nets","PHI":"sixers","TOR":"raptors","MIA":"heat",
+                "ORL":"magic","ATL":"hawks","CHA":"hornets","WAS":"wizards",
+                "CHI":"bulls","CLE":"cavaliers","DET":"pistons","IND":"pacers",
+                "MIL":"bucks","MEM":"grizzlies","NOP":"pelicans","SAS":"spurs",
+                "HOU":"rockets","DAL":"mavericks","OKC":"thunder","DEN":"nuggets",
+                "MIN":"timberwolves","UTA":"jazz","POR":"blazers","SAC":"kings",
+                "PHX":"suns","GSW":"warriors",
+            }
             _score_cols = st.columns(min(len(_today_games), 4))
-            for _ci, (_, _gi) in enumerate(_today_games[:4]):
+            for _ci, (_bk, _gi) in enumerate(_today_games[:4]):
                 with _score_cols[_ci]:
                     _s = _gi["state"]
                     if _s == "in":
@@ -2354,6 +2365,15 @@ with tab4:
                         f'</div>',
                         unsafe_allow_html=True,
                     )
+                    # Click-to-navigate: find markets for this game
+                    _card_t1, _card_t2 = (_bk.split("|") + ["", ""])[:2]
+                    _card_nick = _ABR_TO_NICK.get(_card_t1) or _ABR_TO_NICK.get(_card_t2)
+                    if st.button("→ View markets", key=f"score_nav_{_ls_key}_{_ci}",
+                                 use_container_width=True):
+                        st.session_state["_live_card_focus"] = _bk
+                        if _card_nick:
+                            st.session_state["research_query"] = _card_nick
+                        st.rerun()
 
         if not _any_live_game:
             st.markdown(
@@ -2611,42 +2631,57 @@ with tab4:
                 closes       = meta["closes"]
                 src_icons    = " ".join(grp["source"].map({"polymarket": "🟣", "kalshi": "🔵"}).dropna().unique())
 
-                # Use game date for urgency when available (Kalshi close_time is ~14d after game)
-                if pd.notna(days_to_game):
-                    if days_to_game == 0:
-                        # Look up live/final score from ESPN scoreboard
-                        _gk_ticker  = grp.iloc[0]["ticker"].upper() if not grp.empty else ""
-                        _live_sport = ("nba" if "NBA" in _gk_ticker else
-                                       "nhl" if "NHL" in _gk_ticker else
-                                       "mlb" if "MLB" in _gk_ticker else
-                                       "nfl" if "NFL" in _gk_ticker else None)
-                        _live_info  = None
-                        if _live_sport:
-                            _board    = fetch_espn_scoreboard(_live_sport)
-                            _team_key = _parse_game_key_teams(game_key)  # "ABBR1|ABBR2" or None
-                            if _team_key:
-                                _live_info = _board.get(_team_key)
+                # ── ESPN live lookup (runs for all sports games, not just days_to_game==0) ──
+                _gk_ticker  = grp.iloc[0]["ticker"].upper() if not grp.empty else ""
+                _live_sport = ("nba" if "NBA" in _gk_ticker else
+                               "nhl" if "NHL" in _gk_ticker else
+                               "mlb" if "MLB" in _gk_ticker else
+                               "nfl" if "NFL" in _gk_ticker else None)
+                _live_info  = None
+                if _live_sport:
+                    _espn_board = fetch_espn_scoreboard(_live_sport)
+                    _team_key   = _parse_game_key_teams(game_key)
+                    if _team_key:
+                        _live_info = _espn_board.get(_team_key)
+                    # Focus: if user clicked a live score card for this game, auto-open
+                    if _team_key and st.session_state.get("_live_card_focus") == _team_key:
+                        days_to_game = 0  # treat as today so auto_open fires
 
+                # If ESPN says game is LIVE right now, always show LIVE badge regardless of days_to_game
+                _plabels = {"nba": "Q", "nfl": "Q", "nhl": "P", "mlb": "Inn "}
+                _orig_days_to_game = meta["days_to_game"]  # preserve original (pre-focus override)
+                if _live_info and _live_info["state"] == "in":
+                    _pl   = f"{_plabels.get(_live_sport,'P')}{_live_info['period']} {_live_info['clock']}".strip()
+                    badge = f" 🔴 LIVE · {_live_info['score_str']} · {_pl}"
+                    auto_open = True
+                    if pd.notna(_orig_days_to_game) and pd.notna(game_date):
+                        _gd_str   = f"{int(game_date.day)} {game_date.strftime('%b')}"
+                        date_chip = f"🗓 {_gd_str}"
+                    else:
+                        date_chip = closes
+                # Use game date for urgency when available (Kalshi close_time is ~14d after game)
+                elif pd.notna(_orig_days_to_game):
+                    if _orig_days_to_game == 0:
                         if _live_info:
                             _state = _live_info["state"]
                             _score = _live_info["score_str"]
                             if _state == "post":
                                 badge = f" ⚪ FINAL · {_score}"
-                            elif _state == "in":
-                                _plabels = {"nba": "Q", "nfl": "Q", "nhl": "P", "mlb": "Inn "}
-                                _pl = f"{_plabels.get(_live_sport,'P')}{_live_info['period']} {_live_info['clock']}".strip()
-                                badge = f" 🔴 LIVE · {_score} · {_pl}"
                             else:
                                 badge = f" 🟡 TODAY · {_live_info['description']}"
                         else:
                             badge = " 🟡 TODAY"
                     else:
-                        badge = (" 🟡 TOMORROW" if days_to_game == 1
-                                 else " 🟡 THIS WEEK" if days_to_game <= 6
+                        badge = (" 🟡 TOMORROW" if _orig_days_to_game == 1
+                                 else " 🟡 THIS WEEK" if _orig_days_to_game <= 6
                                  else "")
-                    auto_open = days_to_game == 0 or days_to_game == 1
-                    _gd_str   = f"{int(game_date.day)} {game_date.strftime('%b')}"
-                    date_chip = f"🗓 {_gd_str}"
+                    auto_open = (_orig_days_to_game == 0 or _orig_days_to_game == 1
+                                 or days_to_game == 0)  # days_to_game==0 when focus-clicked
+                    if pd.notna(game_date):
+                        _gd_str   = f"{int(game_date.day)} {game_date.strftime('%b')}"
+                        date_chip = f"🗓 {_gd_str}"
+                    else:
+                        date_chip = closes
                 else:
                     badge     = (" 🟢 TODAY" if pd.notna(min_days) and min_days <= 0
                                  else " 🟡 THIS WEEK" if pd.notna(min_days) and min_days <= 3
@@ -2665,6 +2700,27 @@ with tab4:
                 exp_label = f"{_sport_pfx}{game_title}{badge}  ·  {date_chip}  ·  {n_markets} market{'s' if n_markets != 1 else ''}"
 
                 with st.expander(exp_label, expanded=auto_open):
+                    # Live score banner inside expander
+                    if _live_info and _live_info["state"] == "in":
+                        _pl_in = f"{_plabels.get(_live_sport,'P')}{_live_info['period']} {_live_info['clock']}".strip()
+                        st.markdown(
+                            f'<div style="background:#1a0a0a;border:1px solid #f90000;border-radius:2px;'
+                            f'padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">'
+                            f'<span style="color:#f90000;font-size:9px;letter-spacing:0.1em;">● LIVE</span>'
+                            f'<span style="font-size:15px;font-weight:700;color:#eef2f9;">{_live_info["score_str"]}</span>'
+                            f'<span style="font-size:10px;color:#f90000;">{_pl_in}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+                    elif _live_info and _live_info["state"] == "post":
+                        st.markdown(
+                            f'<div style="background:#14181e;border:1px solid #2a3040;border-radius:2px;'
+                            f'padding:10px 14px;margin-bottom:12px;">'
+                            f'<span style="color:#4a5060;font-size:9px;letter-spacing:0.1em;">FINAL &nbsp;</span>'
+                            f'<span style="font-size:14px;font-weight:600;color:#999ea6;">{_live_info["score_str"]}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
                     st.markdown(
                         f'<div style="margin-bottom:10px;font-size:11px;color:#999ea6;">'
                         f'{src_icons} &nbsp; {type_chips}</div>',
