@@ -287,19 +287,69 @@ div.arrow_down, div.arrow_up {{
     color: var(--t2);
 }}
 
+/* ── landing header ── */
+.cb-nav {{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:0 0 18px 0; border-bottom:1px solid var(--bord);
+}}
+.cb-nav__links {{ display:flex; gap:0; flex-wrap:wrap; }}
+.cb-nav__link {{
+  font-size:10px; color:var(--t3); letter-spacing:0.1em;
+  text-transform:uppercase; margin-right:18px;
+  text-decoration:none;
+}}
+.cb-nav__status {{
+  font-size:9px; color:var(--t3); letter-spacing:0.12em;
+  text-transform:uppercase; display:flex; align-items:center; gap:6px;
+}}
+.cb-nav__dot {{
+  width:6px; height:6px; border-radius:50%; background:var(--green);
+  flex-shrink:0; animation: cb-pulse 2s ease-in-out infinite;
+}}
+@keyframes cb-pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.3; }} }}
+.cb-titles {{
+  display:grid; grid-template-columns:1fr auto;
+  align-items:end; padding:28px 0 22px 0;
+  border-bottom:1px solid var(--bord); gap:24px;
+}}
+.cb-titles__name {{
+  font-size:clamp(28px,4vw,54px); font-weight:700; color:var(--t1);
+  letter-spacing:0.06em; line-height:0.88; text-transform:uppercase;
+  margin:0;
+}}
+.cb-titles__role {{
+  font-size:10px; color:var(--t3); letter-spacing:0.14em;
+  text-transform:uppercase; margin-top:10px;
+}}
+.cb-titles__meta {{
+  text-align:right; font-size:10px; color:var(--t3);
+  letter-spacing:0.1em; text-transform:uppercase; line-height:2;
+  white-space:nowrap;
+}}
+.cb-ticker-wrap {{
+  overflow:hidden; white-space:nowrap;
+  border-bottom:1px solid var(--bord);
+  padding:9px 0; margin-bottom:28px;
+}}
+.cb-ticker {{
+  display:inline-block;
+  animation:cb-marquee 35s linear infinite;
+}}
+.cb-ticker:hover {{ animation-play-state:paused; }}
+@keyframes cb-marquee {{
+  from {{ transform:translateX(0); }}
+  to   {{ transform:translateX(-50%); }}
+}}
+.cb-ticker__item {{
+  display:inline-block; font-size:10px; color:var(--t3);
+  letter-spacing:0.14em; text-transform:uppercase; margin-right:36px;
+}}
+.cb-ticker__item--accent {{ color:var(--red); }}
+
 /* ── hide Streamlit chrome ── */
 #MainMenu, footer {{ visibility: hidden !important; }}
 [data-testid="stToolbar"] {{ display: none !important; }}
 </style>
-""", unsafe_allow_html=True)
-
-# ── page header ───────────────────────────────────────────────────────────────
-st.markdown(f"""
-<div style="padding:36px 0 24px 0; border-bottom:1px solid {_BORD}; margin-bottom:28px;">
-    <div style="font-size:9px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:{_T3};margin-bottom:10px;">// PREDICTION MARKET INTELLIGENCE</div>
-    <div style="font-size:36px;font-weight:700;color:{_T1};letter-spacing:0.06em;line-height:1;text-transform:uppercase;">CALLIBR</div>
-    <div style="font-size:11px;color:{_T3};margin-top:10px;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;">FIND MISPRICED MARKETS &nbsp;·&nbsp; RESEARCH ANY BET &nbsp;·&nbsp; GET YOUR EDGE</div>
-</div>
 """, unsafe_allow_html=True)
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -840,6 +890,56 @@ _fig_sb.update_traces(hovertemplate="<b>%{y}</b><br>%{x} markets<extra></extra>"
 apply_layout(_fig_sb, "Markets by Category", height=220)
 _fig_sb.update_layout(margin=dict(l=4, r=4, t=28, b=4), yaxis=dict(tickfont=dict(size=9)))
 st.sidebar.plotly_chart(_fig_sb, use_container_width=True)
+
+# ── page header ───────────────────────────────────────────────────────────────
+import datetime as _dt_hdr
+_hdr_year = _dt_hdr.date.today().year
+_hdr_mmyy = _dt_hdr.date.today().strftime("%m%Y")
+
+_ticker_items = [
+    "Polymarket", "Kalshi", "NBA", "NHL", "NFL", "MLB",
+    "Politics &amp; Macro", "Crypto", "Tech &amp; Markets",
+    "Entertainment", "Sports", "Prediction Markets",
+    "Live Data", "Edge Scores", "Deep Research",
+]
+_ticker_parts = []
+for i, item in enumerate(_ticker_items * 2):
+    _cls = "cb-ticker__item cb-ticker__item--accent" if i % 5 == 0 else "cb-ticker__item"
+    _ticker_parts.append(f"<span class='{_cls}'>{item} ·</span>")
+_ticker_html = "".join(_ticker_parts)
+
+_nav_dot_color = _fc  # inherits LIVE/stale color from freshness check above
+
+st.markdown(f"""
+<div style='margin-bottom:0;'>
+  <div class='cb-nav'>
+    <div class='cb-nav__links'>
+      <span class='cb-nav__link'>Featured Markets,</span>
+      <span class='cb-nav__link'>Research,</span>
+      <span class='cb-nav__link'>Sports,</span>
+      <span class='cb-nav__link'>Sources</span>
+    </div>
+    <div class='cb-nav__status'>
+      <div class='cb-nav__dot' style='background:{_nav_dot_color};'></div>
+      {_fl}
+    </div>
+  </div>
+  <div class='cb-titles'>
+    <div>
+      <div class='cb-titles__name'>CALLIBR</div>
+      <div class='cb-titles__role'>Prediction Market Intelligence</div>
+    </div>
+    <div class='cb-titles__meta'>
+      Signal N&#xb0;{len(df_markets):,} / Live Feed<br>
+      Coll. {_hdr_year}<br>
+      Ref. PRED-{_hdr_mmyy}-R01
+    </div>
+  </div>
+  <div class='cb-ticker-wrap'>
+    <div class='cb-ticker'>{_ticker_html}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── tabs ──────────────────────────────────────────────────────────────────────
 tab1, tab4, tab2 = st.tabs([
