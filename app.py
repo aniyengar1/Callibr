@@ -47,8 +47,10 @@ st.markdown(f"""
 
 /* ── global ── */
 *, *::before, *::after {{ box-sizing: border-box; }}
-body, p, h1, h2, h3, h4, h5, h6, a, button, input, textarea, select, label, td, th, li, table, code, pre,
-span:not([class*="arrow"]), div:not([class*="arrow"]) {{
+body, h1, h2, h3, h4, h5, h6, a, button, input, textarea, select, label, td, th, li, table, code, pre,
+p:not([class*="arrow"]),
+span:not([class*="arrow"]),
+div:not([class*="arrow"]) {{
     font-family: var(--font) !important;
 }}
 html, body {{ background: var(--bg1) !important; color: var(--t1) !important; }}
@@ -266,74 +268,51 @@ table tr:hover td {{ background: rgba(249,0,0,0.03); }}
     z-index: 9999;
 }}
 
-/* ── fix expander arrow (font override breaks Streamlit's icon font) ── */
-.arrow_down, .arrow_up,
-[class*="arrow_down"], [class*="arrow_up"],
-p.arrow_down, p.arrow_up,
-span.arrow_down, span.arrow_up,
-div.arrow_down, div.arrow_up {{
-    display: none !important;
-}}
-[data-testid="stExpander"] summary svg,
-[data-testid="stExpander"] summary img {{
-    display: none !important;
-}}
-[data-testid="stExpander"] summary::after {{
-    content: '▾';
-    font-size: 11px;
-    color: var(--t3);
-    margin-left: 6px;
-    font-family: monospace !important;
-    float: right;
-}}
-[data-testid="stExpander"] details[open] > summary::after {{
-    content: '▴';
-    color: var(--t2);
-}}
+/* ── expander arrow: keep Streamlit's native icon font intact ── */
+/* p:not([class*="arrow"]) above ensures p.arrow_down doesn't inherit Geist Mono */
 
 /* ── landing header ── */
 .cb-nav {{
   display:flex; justify-content:space-between; align-items:center;
-  padding:0 0 18px 0; border-bottom:1px solid var(--bord);
+  padding:0 0 22px 0; border-bottom:1px solid var(--bord); margin-top:8px;
 }}
 .cb-nav__links {{ display:flex; gap:0; flex-wrap:wrap; }}
 .cb-nav__link {{
   font-size:10px; color:var(--t3); letter-spacing:0.1em;
-  text-transform:uppercase; margin-right:18px;
-  text-decoration:none;
+  text-transform:uppercase; margin-right:18px; text-decoration:none;
 }}
 .cb-nav__status {{
   font-size:9px; color:var(--t3); letter-spacing:0.12em;
   text-transform:uppercase; display:flex; align-items:center; gap:6px;
 }}
 .cb-nav__dot {{
-  width:6px; height:6px; border-radius:50%; background:var(--green);
+  width:6px; height:6px; border-radius:50%;
   flex-shrink:0; animation: cb-pulse 2s ease-in-out infinite;
 }}
 @keyframes cb-pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.3; }} }}
 .cb-titles {{
   display:grid; grid-template-columns:1fr auto;
-  align-items:end; padding:28px 0 22px 0;
+  align-items:end; padding:40px 0 28px 0;
   border-bottom:1px solid var(--bord); gap:24px;
 }}
 .cb-titles__name {{
-  font-size:clamp(28px,4vw,54px); font-weight:700; color:var(--t1);
-  letter-spacing:0.06em; line-height:0.88; text-transform:uppercase;
+  font-size:clamp(48px,7vw,96px); font-weight:700; color:var(--t1);
+  letter-spacing:0.04em; line-height:0.88; text-transform:uppercase;
   margin:0;
 }}
 .cb-titles__role {{
-  font-size:10px; color:var(--t3); letter-spacing:0.14em;
-  text-transform:uppercase; margin-top:10px;
+  font-size:10px; color:var(--t3); letter-spacing:0.18em;
+  text-transform:uppercase; margin-top:14px;
 }}
 .cb-titles__meta {{
   text-align:right; font-size:10px; color:var(--t3);
   letter-spacing:0.1em; text-transform:uppercase; line-height:2;
-  white-space:nowrap;
+  white-space:nowrap; padding-bottom:4px;
 }}
 .cb-ticker-wrap {{
   overflow:hidden; white-space:nowrap;
   border-bottom:1px solid var(--bord);
-  padding:9px 0; margin-bottom:28px;
+  padding:11px 0; margin-bottom:32px;
 }}
 .cb-ticker {{
   display:inline-block;
@@ -349,6 +328,12 @@ div.arrow_down, div.arrow_up {{
   letter-spacing:0.14em; text-transform:uppercase; margin-right:36px;
 }}
 .cb-ticker__item--accent {{ color:var(--red); }}
+
+/* ── tighten Streamlit top padding so header starts higher ── */
+section[data-testid="stMain"] .block-container {{
+  padding-top: 1rem !important;
+  max-width: 100% !important;
+}}
 
 /* ── hide Streamlit chrome ── */
 #MainMenu, footer {{ visibility: hidden !important; }}
