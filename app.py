@@ -263,21 +263,26 @@ table tr:hover td {{ background: rgba(249,0,0,0.03); }}
 }}
 
 /* ── fix expander arrow (font override breaks Streamlit's icon font) ── */
-.arrow_down, .arrow_up, [class*="arrow_down"], [class*="arrow_up"] {{
-    font-size: 0 !important;
-    width: 0 !important;
-    overflow: hidden !important;
+.arrow_down, .arrow_up,
+[class*="arrow_down"], [class*="arrow_up"],
+p.arrow_down, p.arrow_up,
+span.arrow_down, span.arrow_up,
+div.arrow_down, div.arrow_up {{
+    display: none !important;
 }}
-[data-testid="stExpander"] summary svg {{ display: none !important; }}
+[data-testid="stExpander"] summary svg,
+[data-testid="stExpander"] summary img {{
+    display: none !important;
+}}
 [data-testid="stExpander"] summary::after {{
     content: '▾';
-    font-size: 12px;
+    font-size: 11px;
     color: var(--t3);
     margin-left: 6px;
     font-family: monospace !important;
-    transition: transform 0.15s ease;
+    float: right;
 }}
-[data-testid="stExpander"] details[open] summary::after {{
+[data-testid="stExpander"] details[open] > summary::after {{
     content: '▴';
     color: var(--t2);
 }}
