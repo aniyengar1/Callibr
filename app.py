@@ -2151,6 +2151,11 @@ with tab4:
     )
 
     # ── search + filters ──────────────────────────────────────────────────────
+    # Transfer pending navigation query (set by live score card buttons) before
+    # the text_input widget is instantiated — Streamlit forbids setting a widget
+    # key after the widget has already rendered in the same run.
+    if st.session_state.get("_nav_query"):
+        st.session_state["research_query"] = st.session_state.pop("_nav_query")
     sr1, sr2, sr3 = st.columns([3, 1, 1])
     with sr1:
         search_query = st.text_input("Search markets", placeholder="Search markets — e.g. 'LeBron', 'Trump', 'Bitcoin ETF', 'Lakers'...", key="research_query", label_visibility="collapsed")
@@ -2372,7 +2377,7 @@ with tab4:
                                  use_container_width=True):
                         st.session_state["_live_card_focus"] = _bk
                         if _card_nick:
-                            st.session_state["research_query"] = _card_nick
+                            st.session_state["_nav_query"] = _card_nick
                         st.rerun()
 
         if not _any_live_game:
