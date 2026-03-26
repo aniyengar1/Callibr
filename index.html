@@ -62,19 +62,17 @@ nav {
 /* ── hero ── */
 #hero {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: 55fr 45fr;
+  display: flex; flex-direction: column;
   border-bottom: 1px solid var(--bord);
 }
-.hero-left {
-  padding: 0 6vw;
-  display: flex; flex-direction: column; justify-content: flex-end;
-  border-right: 1px solid var(--bord);
-}
-.hero-right {
+.hero-cube-wrap {
+  flex: 1;
   display: flex; align-items: center; justify-content: center;
-  padding: 80px 40px; overflow: hidden;
-  background: var(--bg);
+  padding: 100px 40px 40px;
+  overflow: hidden;
+}
+.hero-bottom {
+  padding: 0 6vw;
 }
 
 .hero-nav-strip {
@@ -407,9 +405,14 @@ footer {
 .footer-copy { font-size: 10px; color: var(--t3); }
 
 @media (max-width: 900px) {
-  #hero { grid-template-columns: 1fr; }
-  .hero-right { display: none; }
-  .hero-left { border-right: none; }
+  .hero-cube-wrap { padding: 80px 20px 30px; }
+  .cube-scene { width: 240px; height: 420px; }
+  .cube { width: 240px; height: 420px; }
+  .face { width: 240px; height: 420px; }
+  .face-front { transform: translateZ(120px); }
+  .face-back  { transform: rotateY(180deg) translateZ(120px); }
+  .face-right { transform: rotateY(90deg)  translateZ(120px); }
+  .face-left  { transform: rotateY(-90deg) translateZ(120px); }
   .hero-titles, .stats-grid, .waitlist-grid { grid-template-columns: 1fr; }
   .stats-left { padding-right: 0; border-right: none; border-bottom: 1px solid var(--bord); padding-bottom: 56px; }
   .stats-right { padding-left: 0; padding-top: 56px; }
@@ -431,8 +434,15 @@ footer {
 </nav>
 
 <section id="hero">
-  <!-- left: text content -->
-  <div class="hero-left">
+  <!-- top: 3D rotating cube -->
+  <div class="hero-cube-wrap">
+    <div class="cube-scene">
+      <div class="cube" id="cube"></div>
+    </div>
+  </div>
+
+  <!-- bottom: text content -->
+  <div class="hero-bottom">
     <div class="hero-nav-strip">
       <div class="hero-strip-links">
         <a href="#features" class="hero-strip-link">Markets,</a>
@@ -462,13 +472,6 @@ footer {
     <div class="hero-ctas">
       <a href="#waitlist" class="btn-primary">Join the Waitlist</a>
       <a href="https://getcallibr.streamlit.app" class="btn-ghost">Try the App →</a>
-    </div>
-  </div>
-
-  <!-- right: 3D rotating cube -->
-  <div class="hero-right">
-    <div class="cube-scene">
-      <div class="cube" id="cube"></div>
     </div>
   </div>
 </section>
