@@ -408,6 +408,7 @@ Return ONLY the JSON, no markdown, no extra text."""
 
 # ── stats fetching ───────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=3600)
 def fetch_nba_player_stats(player_name):
     """Fetch last 5 games for an NBA player via balldontlie API (free, no key)."""
     try:
@@ -439,6 +440,7 @@ def fetch_nba_player_stats(player_name):
     except Exception:
         return None
 
+@st.cache_data(ttl=3600)
 def fetch_espn_team_stats(team_name, sport="nba"):
     """Fetch recent team stats via ESPN unofficial endpoint."""
     try:
@@ -490,6 +492,7 @@ def fetch_espn_team_stats(team_name, sport="nba"):
     except Exception:
         return None
 
+@st.cache_data(ttl=3600)
 def detect_entity_and_fetch_stats(market_title, category, sport_hint=""):
     """Given a market title, try to detect player/team and fetch relevant stats.
     sport_hint: output of get_sport_label() — e.g. '🏀 NBA'. Used for reliable sport routing."""
@@ -1493,6 +1496,101 @@ Assess this market now."""
     except Exception as e:
         return {"_error": f"{type(e).__name__}: {e}"}
 
+def render_bet_curtain(bet, breakdown, sport_label):
+    """Render the quick-stats curtain shown below a bet row before deep research."""
+    cp        = bet["current_price"]
+    chg       = bet["price_change_pct"]
+    days      = bet.get("days_to_close")
+    snaps     = int(bet.get("snapshot_count", 1))
+    std       = bet.get("price_std", 0) or 0
+    es        = int(bet.get("edge_score", 0))
+
+    # ── Edge breakdown bars ───────────────────────────────────────────────────
+    max_abs   = max((abs(v) for v in breakdown.values()), default=1) or 1
+    bar_rows  = ""
+    for label, val in breakdown.items():
+        if val == 0:
+            continue
+        color  = "#00C2A8" if val > 0 else "#DC2626"
+        pct    = min(abs(val) / max_abs * 100, 100)
+        sign   = f"+{val}" if val > 0 else str(val)
+        bar_rows += f"""
+<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;'>
+  <div style='width:110px;font-size:10px;color:#666;text-align:right;flex-shrink:0;'>{label}</div>
+  <div style='flex:1;background:#1A1A1A;border-radius:3px;height:6px;overflow:hidden;'>
+    <div style='height:6px;width:{pct:.0f}%;background:{color};border-radius:3px;'></div>
+  </div>
+  <div style='width:28px;font-size:10px;color:{color};font-weight:600;text-align:right;flex-shrink:0;'>{sign}</div>
+</div>"""
+
+    # ── Team/player form ──────────────────────────────────────────────────────
+    stats     = detect_entity_and_fetch_stats(bet["event_ticker"], bet.get("category","Sports"), sport_hint=sport_label)
+    form_html = ""
+    if stats:
+        def _mini_table(team_stats, color):
+            if not team_stats or not team_stats.get("games"): return ""
+            g    = team_stats["games"]
+            name = team_stats.get("team") or team_stats.get("player","")
+            _td = "padding:3px 6px;font-size:11px;color:#CCC;border-bottom:1px solid #1A1A1A;"
+            rows = "".join(
+                f"<tr>{''.join(f'<td style=\"{_td}\">{v}</td>' for v in list(r.values())[:5])}</tr>"
+                for r in g
+            )
+            hdrs = "".join(
+                f"<th style='padding:3px 6px;font-size:9px;color:#555;border-bottom:1px solid #222;text-align:left;'>{h}</th>"
+                for h in list(g[0].keys())[:5]
+            )
+            return f"""<div>
+<div style='font-size:10px;color:{color};font-weight:600;letter-spacing:0.06em;margin-bottom:4px;'>{name}</div>
+<table style='border-collapse:collapse;width:100%;'>
+<thead><tr>{hdrs}</tr></thead>
+<tbody>{rows}</tbody></table></div>"""
+
+        if stats.get("type") == "matchup":
+            ha = _mini_table(stats.get("team_a"), "#F59E0B")
+            hb = _mini_table(stats.get("team_b"), "#3B82F6")
+            if ha or hb:
+                form_html = f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;'>{ha}{hb}</div>"
+        elif stats.get("games"):
+            c = "#8B5CF6" if stats["type"] == "player" else "#3B82F6"
+            form_html = _mini_table(stats, c)
+
+    form_section = f"""
+<div style='border-top:1px solid #1E1E1E;padding-top:10px;margin-top:10px;'>
+  <div style='font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;'>Recent Form</div>
+  {form_html if form_html else "<div style='font-size:11px;color:#333;'>No game stats available</div>"}
+</div>""" if stats else ""
+
+    # ── Market metadata row ───────────────────────────────────────────────────
+    days_str = f"{int(days)}d" if days is not None and not (isinstance(days, float) and days != days) else "—"
+    liq_lbl, liq_col = ("HIGH", "#00C2A8") if snaps >= 5 and std < 0.05 else \
+                       ("MED",  "#F59E0B") if snaps >= 3 or std < 0.10 else \
+                       ("LOW",  "#DC2626")
+    chg_col = "#00C2A8" if chg > 0 else "#DC2626"
+    meta_html = f"""
+<div style='border-top:1px solid #1E1E1E;padding-top:10px;margin-top:10px;
+  display:flex;gap:20px;font-size:11px;flex-wrap:wrap;'>
+  <span style='color:#555;'>Closes in <b style='color:#CCC;'>{days_str}</b></span>
+  <span style='color:#555;'>Price <b style='color:#FFF;'>{cp:.0%}</b></span>
+  <span style='color:#555;'>Change <b style='color:{chg_col};'>{'+' if chg>0 else ''}{chg:.1f}%</b></span>
+  <span style='color:#555;'>Volatility <b style='color:#CCC;'>{std*100:.1f}%σ</b></span>
+  <span style='color:#555;'>Liquidity <b style='color:{liq_col};'>{liq_lbl}</b> <span style='color:#333;'>({snaps} snaps)</span></span>
+</div>"""
+
+    return f"""
+<div style='background:#0D0D0D;border:1px solid #1E1E1E;border-radius:6px;
+  padding:14px 16px;margin:6px 0 10px 0;'>
+  <div style='display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start;'>
+    <div>
+      <div style='font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;'>Edge Breakdown <span style='color:#555;font-weight:700;'>{es}</span></div>
+      {bar_rows}
+    </div>
+    <div>{form_section if form_section else "<div style='font-size:11px;color:#333;padding-top:24px;'>No team stats found</div>"}</div>
+  </div>
+  {meta_html}
+</div>"""
+
+
 def render_research_card(row, research, news, edge_score, df_all):
     """Render full market research card HTML."""
     cp = row["current_price"]
@@ -2063,7 +2161,7 @@ with tab4:
                                 if src == "polymarket"
                                 else f"https://kalshi.com/markets/{str(bet['ticker']).split('-')[0].lower()}"
                             )
-                            _rc = st.columns([5, 1, 1, 1, 1, 2])
+                            _rc = st.columns([5, 1, 1, 1, 1, 1, 1])
                             _rc[0].markdown(
                                 f'<div style="font-size:13px;color:#CCC;padding:4px 0;">{title_txt}</div>',
                                 unsafe_allow_html=True
@@ -2092,9 +2190,18 @@ with tab4:
                                 f'text-decoration:none;display:inline-block;margin-top:2px;">Bet →</a>',
                                 unsafe_allow_html=True
                             )
-                            if _rc[5].button("🔬 Research", key=f"dr_{bet['ticker']}", help="Run deep research"):
+                            _sc_key = f"sc_{bet['ticker']}"
+                            if _rc[5].button("📊", key=f"scbtn_{bet['ticker']}", help="Quick stats"):
+                                st.session_state[_sc_key] = not st.session_state.get(_sc_key, False)
+                            if _rc[6].button("🔬", key=f"dr_{bet['ticker']}", help="Deep research"):
                                 st.session_state["dr_ticker"] = bet["ticker"]
                                 st.session_state.pop("dr_ticker_result", None)
+                            # Stats curtain
+                            if st.session_state.get(_sc_key):
+                                st.markdown(
+                                    render_bet_curtain(bet, _bd, _sport_lbl),
+                                    unsafe_allow_html=True
+                                )
                             # Render research card inline if this row's research is ready
                             if st.session_state.get("dr_ticker_result") == bet["ticker"] and "research_card" in st.session_state:
                                 st.markdown(st.session_state["research_card"], unsafe_allow_html=True)
