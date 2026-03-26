@@ -8,169 +8,272 @@ from supabase import create_client
 
 st.set_page_config(page_title="Callibr", page_icon="🎯", layout="wide")
 
+# ── design tokens (used in inline HTML throughout the file) ───────────────────
+_BG0   = "#080b0f"   # deepest background
+_BG1   = "#0f1318"   # page / app background
+_BG2   = "#14181e"   # card surface
+_BG3   = "#1c2028"   # elevated card / hover
+_BORD  = "#1e2530"   # border
+_T1    = "#eef2f9"   # primary text
+_T2    = "#999ea6"   # secondary text
+_T3    = "#4a5060"   # tertiary / placeholder
+_RED   = "#f90000"   # accent red
+_GREEN = "#00C2A8"   # positive edge / YES
+_AMBER = "#F59E0B"   # warning / neutral
+_BLUE  = "#3B82F6"   # kalshi
+_PURP  = "#8B5CF6"   # polymarket
+
 # ── custom CSS ────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap');
 
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+:root {{
+  --bg0:    {_BG0};
+  --bg1:    {_BG1};
+  --bg2:    {_BG2};
+  --bg3:    {_BG3};
+  --bord:   {_BORD};
+  --t1:     {_T1};
+  --t2:     {_T2};
+  --t3:     {_T3};
+  --red:    {_RED};
+  --green:  {_GREEN};
+  --amber:  {_AMBER};
+  --blue:   {_BLUE};
+  --purp:   {_PURP};
+  --font:   'Geist Mono', 'Courier New', monospace;
+}}
 
-.stApp { background-color: #1C1C1E; }
+/* ── global ── */
+*, *::before, *::after {{ font-family: var(--font) !important; box-sizing: border-box; }}
+html, body {{ background: var(--bg1) !important; color: var(--t1) !important; }}
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {{
+    background: var(--bg1) !important;
+}}
+p, li, span, div {{ color: var(--t1); }}
 
-[data-testid="stSidebar"] {
-    background-color: #161618;
-    border-right: 1px solid #2A2A2C;
-}
-[data-testid="stSidebar"] * { color: #E0E0E0 !important; }
-[data-testid="stSidebar"] .stMetric {
-    background: #1A1A1A;
-    border: 1px solid #2A2A2A;
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 8px;
-}
+/* ── sidebar ── */
+[data-testid="stSidebar"] {{
+    background: var(--bg0) !important;
+    border-right: 1px solid var(--bord) !important;
+}}
+[data-testid="stSidebar"] * {{ color: var(--t2) !important; }}
 
-.stTabs [data-baseweb="tab-list"] {
-    background-color: transparent;
-    border-bottom: 1px solid #1E1E1E;
+/* ── tabs ── */
+.stTabs [data-baseweb="tab-list"] {{
+    background: transparent;
+    border-bottom: 1px solid var(--bord);
     gap: 0; padding: 0;
-}
-.stTabs [data-baseweb="tab"] {
-    background-color: transparent;
-    color: #555555;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 12px 24px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    transition: all 0.2s ease;
-}
-.stTabs [data-baseweb="tab"]:hover { color: #FFFFFF; }
-.stTabs [aria-selected="true"] {
-    background-color: transparent !important;
-    color: #FFFFFF !important;
-    border-bottom: 2px solid #FFFFFF !important;
-}
-.stTabs [data-baseweb="tab-panel"] { padding-top: 32px; }
+}}
+.stTabs [data-baseweb="tab"] {{
+    background: transparent !important;
+    color: var(--t3) !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 10px 22px !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    transition: all 0.2s ease !important;
+}}
+.stTabs [data-baseweb="tab"]:hover {{ color: var(--t1) !important; }}
+.stTabs [aria-selected="true"] {{
+    color: var(--red) !important;
+    border-bottom: 2px solid var(--red) !important;
+    background: transparent !important;
+}}
+.stTabs [data-baseweb="tab-panel"] {{ padding-top: 28px; }}
 
-[data-testid="stMetric"] {
-    background: #111111;
-    border: 1px solid #1E1E1E;
-    border-radius: 10px;
-    padding: 20px 24px;
+/* ── metrics ── */
+[data-testid="stMetric"] {{
+    background: var(--bg2) !important;
+    border: 1px solid var(--bord) !important;
+    border-radius: 2px !important;
+    padding: 16px 20px !important;
     transition: border-color 0.2s ease;
-}
-[data-testid="stMetric"]:hover { border-color: #333333; }
-[data-testid="stMetricLabel"] {
-    color: #555555 !important;
+}}
+[data-testid="stMetric"]:hover {{ border-color: var(--red) !important; }}
+[data-testid="stMetricLabel"] {{
+    color: var(--t3) !important;
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+}}
+[data-testid="stMetricValue"] {{
+    color: var(--t1) !important;
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+}}
+
+/* ── headings ── */
+h1, h2, h3, h4 {{
+    color: var(--t1) !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+}}
+h2 {{ border-bottom: 1px solid var(--bord); padding-bottom: 10px; font-size: 14px !important; }}
+h3 {{ font-size: 12px !important; color: var(--t2) !important; }}
+
+/* ── buttons ── */
+.stButton > button {{
+    background: transparent !important;
+    color: var(--t2) !important;
+    border: 1px solid var(--bord) !important;
+    border-radius: 1px !important;
+    padding: 6px 14px !important;
     font-size: 10px !important;
     font-weight: 600 !important;
     letter-spacing: 0.1em !important;
     text-transform: uppercase !important;
-}
-[data-testid="stMetricValue"] {
-    color: #FFFFFF !important;
-    font-size: 26px !important;
-    font-weight: 600 !important;
-    letter-spacing: -0.02em !important;
-}
+    transition: all 0.18s ease !important;
+}}
+.stButton > button:hover {{
+    border-color: var(--red) !important;
+    color: var(--red) !important;
+    transform: skew(-3deg) !important;
+    background: rgba(249,0,0,0.05) !important;
+}}
+.stButton > button:active {{
+    transform: skew(-3deg) scale(0.97) !important;
+}}
 
-h1, h2, h3, h4 {
-    color: #FFFFFF !important;
-    font-weight: 600 !important;
-    letter-spacing: -0.02em !important;
-}
-h2 { border-bottom: 1px solid #1A1A1A; padding-bottom: 12px; }
-
-.stButton > button {
-    background-color: #FFFFFF;
-    color: #000000;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 28px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    transition: all 0.2s ease;
-}
-.stButton > button:hover {
-    background-color: #E8E8E8;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(255,255,255,0.08);
-}
-
+/* ── inputs / selects ── */
 .stSelectbox > div > div,
+.stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
-.stNumberInput > div > div > input {
-    background-color: #111111 !important;
-    border: 1px solid #222222 !important;
-    border-radius: 8px !important;
-    color: #FFFFFF !important;
-    font-size: 13px !important;
-}
+.stNumberInput > div > div > input {{
+    background: var(--bg2) !important;
+    border: 1px solid var(--bord) !important;
+    border-radius: 1px !important;
+    color: var(--t1) !important;
+    font-size: 12px !important;
+}}
+.stSelectbox > div > div:focus-within,
+.stTextInput > div > div > input:focus {{
+    border-color: var(--red) !important;
+    box-shadow: 0 0 0 1px var(--red) !important;
+}}
 
-[data-testid="stDataFrame"] {
-    border: 1px solid #1A1A1A;
-    border-radius: 10px;
+/* ── sliders ── */
+[data-testid="stSlider"] [role="slider"] {{ background: var(--red) !important; }}
+[data-testid="stSlider"] [data-testid="stSliderThumb"] {{ background: var(--red) !important; }}
+
+/* ── expanders ── */
+[data-testid="stExpander"] {{
+    background: var(--bg2) !important;
+    border: 1px solid var(--bord) !important;
+    border-radius: 2px !important;
+    margin-bottom: 2px !important;
+}}
+[data-testid="stExpander"] summary {{
+    color: var(--t1) !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+    padding: 10px 14px !important;
+}}
+[data-testid="stExpander"] summary:hover {{ color: var(--red) !important; }}
+[data-testid="stExpander"] details[open] summary {{
+    border-bottom: 1px solid var(--bord) !important;
+}}
+
+/* ── dataframes ── */
+[data-testid="stDataFrame"] {{
+    border: 1px solid var(--bord) !important;
+    border-radius: 2px !important;
     overflow: hidden;
-}
+}}
+[data-testid="stDataFrame"] th {{
+    background: var(--bg2) !important;
+    color: var(--t3) !important;
+    font-size: 9px !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid var(--bord) !important;
+    font-weight: 600 !important;
+}}
+[data-testid="stDataFrame"] td {{
+    color: var(--t2) !important;
+    font-size: 11px !important;
+    border-bottom: 1px solid rgba(30,37,48,0.6) !important;
+}}
+[data-testid="stDataFrame"] tr:hover td {{ background: rgba(249,0,0,0.03) !important; }}
 
-.stInfo {
-    background-color: #111111 !important;
-    border: 1px solid #222222 !important;
-    border-left: 3px solid #FFFFFF !important;
-    border-radius: 8px !important;
-}
-.stWarning { border-left: 3px solid #F59E0B !important; }
-.stError   { border-left: 3px solid #DC2626 !important; }
+/* ── alerts ── */
+[data-testid="stAlert"], .stInfo, .stWarning, .stError {{
+    background: var(--bg2) !important;
+    border: 1px solid var(--bord) !important;
+    border-radius: 1px !important;
+    color: var(--t2) !important;
+}}
+.stInfo    {{ border-left: 2px solid var(--blue)  !important; }}
+.stWarning {{ border-left: 2px solid var(--amber) !important; }}
+.stError   {{ border-left: 2px solid var(--red)   !important; }}
 
-.stRadio > div > label {
-    background: #111111;
-    border: 1px solid #222222;
-    border-radius: 6px;
-    padding: 8px 16px;
-    color: #AAAAAA !important;
-    font-size: 12px;
-    transition: all 0.15s ease;
-}
-.stRadio > div > label:hover {
-    border-color: #444444;
-    color: #FFFFFF !important;
-}
+/* ── caption / small text ── */
+[data-testid="stCaptionContainer"], .stCaption {{
+    color: var(--t3) !important;
+    font-size: 10px !important;
+    letter-spacing: 0.06em !important;
+}}
 
-hr { border: none; border-top: 1px solid #1A1A1A; margin: 28px 0; }
+/* ── hr ── */
+hr {{ border: none; border-top: 1px solid var(--bord); margin: 24px 0; }}
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #0A0A0A; }
-::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 2px; }
+/* ── tables (raw HTML) ── */
+table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+table th {{
+    background: var(--bg2); color: var(--t3);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 10px 14px; border-bottom: 1px solid var(--bord); text-align: left;
+}}
+table td {{ padding: 10px 14px; border-bottom: 1px solid rgba(30,37,48,0.5); color: var(--t2); }}
+table tr:hover td {{ background: rgba(249,0,0,0.03); }}
 
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-table th {
-    background: #111111; color: #555555;
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    padding: 12px 16px; border-bottom: 1px solid #1E1E1E; text-align: left;
-}
-table td { padding: 12px 16px; border-bottom: 1px solid #151515; color: #CCCCCC; }
-table tr:hover td { background: #111111; }
-table a {
-    color: #FFFFFF; text-decoration: none; font-weight: 600;
-    border-bottom: 1px solid #333333; padding-bottom: 1px;
-    transition: border-color 0.15s ease;
-}
-table a:hover { border-bottom-color: #FFFFFF; }
+/* ── plotly chart backgrounds ── */
+.js-plotly-plot .plotly, .plot-container {{ background: transparent !important; }}
+.modebar {{ background: transparent !important; }}
+
+/* ── scrollbar ── */
+::-webkit-scrollbar {{ width: 3px; height: 3px; }}
+::-webkit-scrollbar-track {{ background: var(--bg0); }}
+::-webkit-scrollbar-thumb {{ background: var(--bord); border-radius: 0; }}
+::-webkit-scrollbar-thumb:hover {{ background: var(--red); }}
+
+/* ── scan-line overlay ── */
+.main::after {{
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0,0,0,0.04) 3px,
+        rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+}}
+
+/* ── hide Streamlit chrome ── */
+#MainMenu, footer {{ visibility: hidden !important; }}
+[data-testid="stToolbar"] {{ display: none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ── page header ───────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="padding:40px 0 28px 0; border-bottom:1px solid #1A1A1A; margin-bottom:32px;">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#444444;margin-bottom:10px;">PREDICTION MARKET INTELLIGENCE</div>
-    <div style="font-size:38px;font-weight:700;color:#FFFFFF;letter-spacing:-0.03em;line-height:1;">Callibr</div>
-    <div style="font-size:14px;color:#444444;margin-top:10px;font-weight:400;letter-spacing:0.01em;">Find mispriced markets · Research any bet · Get your edge</div>
+st.markdown(f"""
+<div style="padding:36px 0 24px 0; border-bottom:1px solid {_BORD}; margin-bottom:28px;">
+    <div style="font-size:9px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:{_T3};margin-bottom:10px;">// PREDICTION MARKET INTELLIGENCE</div>
+    <div style="font-size:36px;font-weight:700;color:{_T1};letter-spacing:0.06em;line-height:1;text-transform:uppercase;">CALLIBR</div>
+    <div style="font-size:11px;color:{_T3};margin-top:10px;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;">FIND MISPRICED MARKETS &nbsp;·&nbsp; RESEARCH ANY BET &nbsp;·&nbsp; GET YOUR EDGE</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -195,16 +298,16 @@ SOURCE_LABELS = {
 
 # Shared Plotly layout defaults
 PLOT_LAYOUT = dict(
-    paper_bgcolor="#1C1C1E",
-    plot_bgcolor="#1C1C1E",
-    font=dict(family="Inter", color="#888888", size=11),
+    paper_bgcolor=_BG1,
+    plot_bgcolor=_BG1,
+    font=dict(family="'Geist Mono', 'Courier New', monospace", color=_T3, size=10),
     margin=dict(l=16, r=16, t=36, b=16),
-    xaxis=dict(gridcolor="#1A1A1A", linecolor="#222222", tickfont=dict(size=10)),
-    yaxis=dict(gridcolor="#1A1A1A", linecolor="#222222", tickfont=dict(size=10)),
+    xaxis=dict(gridcolor=_BORD, linecolor=_BORD, tickfont=dict(size=9)),
+    yaxis=dict(gridcolor=_BORD, linecolor=_BORD, tickfont=dict(size=9)),
     hoverlabel=dict(
-        bgcolor="#1A1A1A",
-        bordercolor="#333333",
-        font=dict(family="Inter", size=12, color="#FFFFFF"),
+        bgcolor=_BG2,
+        bordercolor=_BORD,
+        font=dict(family="'Geist Mono', 'Courier New', monospace", size=11, color=_T1),
     ),
 )
 
@@ -569,13 +672,13 @@ def _single_stats_table_html(team_stats, color):
     headers = list(games[0].keys()) if games else []
     title = f"{team_stats['team']} · Last {len(games)} games"
     rows_html = "".join(
-        "<tr>" + "".join(f"<td style='padding:6px 10px;border-bottom:1px solid #1A1A1A;color:#CCC;font-size:12px;'>{g.get(h,'-')}</td>" for h in headers) + "</tr>"
+        "<tr>" + "".join(f"<td style='padding:6px 10px;border-bottom:1px solid #1e2530;color:#c5cad3;font-size:12px;'>{g.get(h,'-')}</td>" for h in headers) + "</tr>"
         for g in games
     )
-    return f"""<div style='background:#111;border:1px solid #1E1E1E;border-left:3px solid {color};border-radius:6px;padding:12px 16px;margin-top:8px;font-family:monospace;'>
+    return f"""<div style='background:#14181e;border:1px solid #1e2530;border-left:3px solid {color};border-radius:1px;padding:12px 16px;margin-top:8px;font-family:'Geist Mono','Courier New',monospace;'>
 <div style='font-size:10px;color:#666;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>{title}</div>
 <table style='width:100%;border-collapse:collapse;'>
-<thead><tr>{"".join(f"<th style='padding:4px 10px;text-align:left;font-size:10px;color:#555;letter-spacing:0.06em;border-bottom:1px solid #222;'>{h}</th>" for h in headers)}</tr></thead>
+<thead><tr>{"".join(f"<th style='padding:4px 10px;text-align:left;font-size:10px;color:#999ea6;letter-spacing:0.06em;border-bottom:1px solid #1e2530;'>{h}</th>" for h in headers)}</tr></thead>
 <tbody>{rows_html}</tbody></table></div>"""
 
 def render_stats_card(stats):
@@ -603,13 +706,13 @@ def render_stats_card(stats):
 
     rows_html = ""
     for g in games:
-        rows_html += "<tr>" + "".join(f"<td style='padding:6px 10px;border-bottom:1px solid #1A1A1A;color:#CCC;font-size:12px;'>{g.get(h,'-')}</td>" for h in headers) + "</tr>"
+        rows_html += "<tr>" + "".join(f"<td style='padding:6px 10px;border-bottom:1px solid #1e2530;color:#c5cad3;font-size:12px;'>{g.get(h,'-')}</td>" for h in headers) + "</tr>"
 
     return f"""
-<div style='background:#111;border:1px solid #1E1E1E;border-left:3px solid {color};border-radius:6px;padding:12px 16px;margin-top:8px;font-family:monospace;'>
+<div style='background:#14181e;border:1px solid #1e2530;border-left:3px solid {color};border-radius:1px;padding:12px 16px;margin-top:8px;font-family:'Geist Mono','Courier New',monospace;'>
 <div style='font-size:10px;color:#666;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;'>{title}</div>
 <table style='width:100%;border-collapse:collapse;'>
-<thead><tr>{"".join(f"<th style='padding:4px 10px;text-align:left;font-size:10px;color:#555;letter-spacing:0.06em;border-bottom:1px solid #222;'>{h}</th>" for h in headers)}</tr></thead>
+<thead><tr>{"".join(f"<th style='padding:4px 10px;text-align:left;font-size:10px;color:#999ea6;letter-spacing:0.06em;border-bottom:1px solid #1e2530;'>{h}</th>" for h in headers)}</tr></thead>
 <tbody>{rows_html}</tbody>
 </table>
 </div>"""
@@ -629,7 +732,7 @@ df_markets        = build_markets_df(df_live_raw)
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.markdown("## Callibr")
-st.sidebar.markdown("<div style='font-size:11px;color:#444;margin-bottom:16px;'>Find your edge</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='font-size:11px;color:#636870;margin-bottom:16px;'>Find your edge</div>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 # Data freshness indicator
@@ -644,16 +747,16 @@ else:
     _fc, _fl = "#DC2626", f"{_mins_ago // 60}h ago"
 
 st.sidebar.markdown(f"""
-<div style='background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:12px 14px;margin-bottom:10px;'>
-  <div style='font-size:9px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;'>Data Pipeline</div>
+<div style='background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:12px 14px;margin-bottom:10px;'>
+  <div style='font-size:9px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;'>Data Pipeline</div>
   <div style='display:flex;justify-content:space-between;align-items:center;'>
-    <span style='font-size:22px;font-weight:700;color:#FFF;'>{len(df_raw):,}</span>
-    <span style='font-size:10px;color:#555;'>snapshots</span>
+    <span style='font-size:22px;font-weight:700;color:#eef2f9;'>{len(df_raw):,}</span>
+    <span style='font-size:10px;color:#999ea6;'>snapshots</span>
   </div>
   <div style='margin-top:8px;display:flex;align-items:center;gap:6px;'>
     <span style='width:8px;height:8px;border-radius:50%;background:{_fc};display:inline-block;'></span>
     <span style='font-size:11px;color:{_fc};font-weight:600;'>{_fl}</span>
-    <span style='font-size:10px;color:#444;'>· {_last_ts_str[:16] if _last_ts_str else "—"}</span>
+    <span style='font-size:10px;color:#636870;'>· {_last_ts_str[:16] if _last_ts_str else "—"}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -666,20 +769,20 @@ _poly_pct   = int(_n_poly  / _n_total * 100) if _n_total > 0 else 0
 _kalshi_pct = 100 - _poly_pct
 
 st.sidebar.markdown(f"""
-<div style='background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:12px 14px;margin-bottom:10px;'>
-  <div style='font-size:9px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;'>Sources</div>
+<div style='background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:12px 14px;margin-bottom:10px;'>
+  <div style='font-size:9px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;'>Sources</div>
   <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
     <span style='font-size:11px;color:#8B5CF6;font-weight:600;'>🟣 Polymarket</span>
-    <span style='font-size:12px;color:#FFF;font-weight:700;'>{_n_poly:,}</span>
+    <span style='font-size:12px;color:#eef2f9;font-weight:700;'>{_n_poly:,}</span>
   </div>
-  <div style='background:#1A1A1A;border-radius:4px;height:4px;margin-bottom:8px;overflow:hidden;'>
+  <div style='background:#1c2028;border-radius:4px;height:4px;margin-bottom:8px;overflow:hidden;'>
     <div style='background:#8B5CF6;height:4px;width:{_poly_pct}%;border-radius:4px;'></div>
   </div>
   <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
     <span style='font-size:11px;color:#3B82F6;font-weight:600;'>🔵 Kalshi</span>
-    <span style='font-size:12px;color:#FFF;font-weight:700;'>{_n_kalshi:,}</span>
+    <span style='font-size:12px;color:#eef2f9;font-weight:700;'>{_n_kalshi:,}</span>
   </div>
-  <div style='background:#1A1A1A;border-radius:4px;height:4px;overflow:hidden;'>
+  <div style='background:#1c2028;border-radius:4px;height:4px;overflow:hidden;'>
     <div style='background:#3B82F6;height:4px;width:{_kalshi_pct}%;border-radius:4px;'></div>
   </div>
 </div>
@@ -930,9 +1033,9 @@ for _df_fix in [df_markets, df_poly_markets, df_kalshi_markets]:
 with tab1:
     st.markdown(
         f"## Market Overview &nbsp;&nbsp;"
-        f"<span style='background:{_fc};color:#000;font-size:10px;font-weight:700;"
-        f"padding:2px 10px;border-radius:12px;vertical-align:middle;'>{_fl}</span>"
-        f"<span style='color:#444;font-size:11px;margin-left:8px;vertical-align:middle;'>"
+        f"<span style='border:1px solid {_fc};color:{_fc};font-size:9px;font-weight:700;"
+        f"padding:2px 8px;border-radius:1px;vertical-align:middle;letter-spacing:0.1em;'>{_fl}</span>"
+        f"<span style='color:#636870;font-size:11px;margin-left:8px;vertical-align:middle;'>"
         f"updated {_last_ts_str[:16] if _last_ts_str else '—'} UTC</span>",
         unsafe_allow_html=True
     )
@@ -1081,7 +1184,7 @@ with tab1:
         )
         st.markdown(
             f"### 🔥 Closing Soon — Next 14 Days "
-            f"<span style='font-size:14px;color:#555;font-weight:400;'>({len(_closing_soon):,} markets)</span>",
+            f"<span style='font-size:14px;color:#999ea6;font-weight:400;'>({len(_closing_soon):,} markets)</span>",
             unsafe_allow_html=True
         )
 
@@ -1154,7 +1257,7 @@ with tab1:
     no_date   = df_tables[df_tables["days_to_close"].isna()]
 
     # ── Upcoming ─────────────────────────────────────────────────────────────
-    st.markdown(f"### ⚡ Upcoming — Next 30 Days &nbsp;<span style='font-size:14px;color:#555;font-weight:400;'>({len(upcoming):,} markets)</span>", unsafe_allow_html=True)
+    st.markdown(f"### ⚡ Upcoming — Next 30 Days &nbsp;<span style='font-size:14px;color:#999ea6;font-weight:400;'>({len(upcoming):,} markets)</span>", unsafe_allow_html=True)
     st.caption("Sorted by urgency — closest to closing first.")
     render_market_table(upcoming, "upcoming")
 
@@ -1517,7 +1620,7 @@ def render_bet_curtain(bet, breakdown, sport_label):
         bar_rows += f"""
 <div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;'>
   <div style='width:110px;font-size:10px;color:#666;text-align:right;flex-shrink:0;'>{label}</div>
-  <div style='flex:1;background:#1A1A1A;border-radius:3px;height:6px;overflow:hidden;'>
+  <div style='flex:1;background:#1c2028;border-radius:3px;height:6px;overflow:hidden;'>
     <div style='height:6px;width:{pct:.0f}%;background:{color};border-radius:3px;'></div>
   </div>
   <div style='width:28px;font-size:10px;color:{color};font-weight:600;text-align:right;flex-shrink:0;'>{sign}</div>
@@ -1531,13 +1634,13 @@ def render_bet_curtain(bet, breakdown, sport_label):
             if not team_stats or not team_stats.get("games"): return ""
             g    = team_stats["games"]
             name = team_stats.get("team") or team_stats.get("player","")
-            _td = "padding:3px 6px;font-size:11px;color:#CCC;border-bottom:1px solid #1A1A1A;"
+            _td = "padding:3px 6px;font-size:11px;color:#c5cad3;border-bottom:1px solid #1e2530;"
             rows = "".join(
                 f"<tr>{''.join(f'<td style=\"{_td}\">{v}</td>' for v in list(r.values())[:5])}</tr>"
                 for r in g
             )
             hdrs = "".join(
-                f"<th style='padding:3px 6px;font-size:9px;color:#555;border-bottom:1px solid #222;text-align:left;'>{h}</th>"
+                f"<th style='padding:3px 6px;font-size:9px;color:#999ea6;border-bottom:1px solid #1e2530;text-align:left;'>{h}</th>"
                 for h in list(g[0].keys())[:5]
             )
             return f"""<div>
@@ -1556,9 +1659,9 @@ def render_bet_curtain(bet, breakdown, sport_label):
             form_html = _mini_table(stats, c)
 
     form_section = f"""
-<div style='border-top:1px solid #1E1E1E;padding-top:10px;margin-top:10px;'>
-  <div style='font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;'>Recent Form</div>
-  {form_html if form_html else "<div style='font-size:11px;color:#333;'>No game stats available</div>"}
+<div style='border-top:1px solid #1e2530;padding-top:10px;margin-top:10px;'>
+  <div style='font-size:9px;color:#636870;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;'>Recent Form</div>
+  {form_html if form_html else "<div style='font-size:11px;color:#2a2f38;'>No game stats available</div>"}
 </div>""" if stats else ""
 
     # ── Market metadata row ───────────────────────────────────────────────────
@@ -1568,24 +1671,24 @@ def render_bet_curtain(bet, breakdown, sport_label):
                        ("LOW",  "#DC2626")
     chg_col = "#00C2A8" if chg > 0 else "#DC2626"
     meta_html = f"""
-<div style='border-top:1px solid #1E1E1E;padding-top:10px;margin-top:10px;
+<div style='border-top:1px solid #1e2530;padding-top:10px;margin-top:10px;
   display:flex;gap:20px;font-size:11px;flex-wrap:wrap;'>
-  <span style='color:#555;'>Closes in <b style='color:#CCC;'>{days_str}</b></span>
-  <span style='color:#555;'>Price <b style='color:#FFF;'>{cp:.0%}</b></span>
-  <span style='color:#555;'>Change <b style='color:{chg_col};'>{'+' if chg>0 else ''}{chg:.1f}%</b></span>
-  <span style='color:#555;'>Volatility <b style='color:#CCC;'>{std*100:.1f}%σ</b></span>
-  <span style='color:#555;'>Liquidity <b style='color:{liq_col};'>{liq_lbl}</b> <span style='color:#333;'>({snaps} snaps)</span></span>
+  <span style='color:#999ea6;'>Closes in <b style='color:#c5cad3;'>{days_str}</b></span>
+  <span style='color:#999ea6;'>Price <b style='color:#eef2f9;'>{cp:.0%}</b></span>
+  <span style='color:#999ea6;'>Change <b style='color:{chg_col};'>{'+' if chg>0 else ''}{chg:.1f}%</b></span>
+  <span style='color:#999ea6;'>Volatility <b style='color:#c5cad3;'>{std*100:.1f}%σ</b></span>
+  <span style='color:#999ea6;'>Liquidity <b style='color:{liq_col};'>{liq_lbl}</b> <span style='color:#2a2f38;'>({snaps} snaps)</span></span>
 </div>"""
 
     return f"""
-<div style='background:#0D0D0D;border:1px solid #1E1E1E;border-radius:6px;
+<div style='background:#0f1318;border:1px solid #1e2530;border-radius:1px;
   padding:14px 16px;margin:6px 0 10px 0;'>
   <div style='display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start;'>
     <div>
-      <div style='font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;'>Edge Breakdown <span style='color:#555;font-weight:700;'>{es}</span></div>
+      <div style='font-size:9px;color:#636870;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;'>Edge Breakdown <span style='color:#999ea6;font-weight:700;'>{es}</span></div>
       {bar_rows}
     </div>
-    <div>{form_section if form_section else "<div style='font-size:11px;color:#333;padding-top:24px;'>No team stats found</div>"}</div>
+    <div>{form_section if form_section else "<div style='font-size:11px;color:#2a2f38;padding-top:24px;'>No team stats found</div>"}</div>
   </div>
   {meta_html}
 </div>"""
@@ -1645,71 +1748,71 @@ def render_research_card(row, research, news, edge_score, df_all):
         # Build narrative gap HTML conditionally — avoids .format() KeyError
         narrative_html = ""
         if narrative_flag:
-            narrative_html = f"""<div style="background:#1A0F00;border:1px solid #F59E0B44;border-left:3px solid #F59E0B;border-radius:6px;padding:14px;margin-bottom:12px;">
+            narrative_html = f"""<div style="background:#1A0F00;border:1px solid #F59E0B44;border-left:3px solid #F59E0B;border-radius:1px;padding:14px;margin-bottom:12px;">
   <div style="font-size:10px;color:#F59E0B;letter-spacing:0.1em;font-weight:700;text-transform:uppercase;margin-bottom:4px;">⚠️ Narrative Gap Detected</div>
-  <div style="font-size:12px;color:#CCC;">{narrative_reason}</div>
+  <div style="font-size:12px;color:#c5cad3;">{narrative_reason}</div>
 </div>"""
 
         verdict_html = f"""
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
-  <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:16px;text-align:center;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Current Price</div>
+  <div style="background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:16px;text-align:center;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Current Price</div>
     <div style="font-size:28px;font-weight:700;color:#fff;">{cp:.0%}</div>
   </div>
-  <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:16px;text-align:center;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Fair Value</div>
+  <div style="background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:16px;text-align:center;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Fair Value</div>
     <div style="font-size:28px;font-weight:700;color:{diff_color};">{fv:.0%} <span style="font-size:14px;">({diff_str})</span></div>
   </div>
-  <div style="background:#111;border:1px solid {vc};border-radius:8px;padding:16px;text-align:center;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Verdict</div>
+  <div style="background:#14181e;border:1px solid {vc};border-radius:2px;padding:16px;text-align:center;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Verdict</div>
     <div style="font-size:18px;font-weight:700;color:{vc};">{verdict}</div>
-    <div style="font-size:10px;color:#555;margin-top:4px;">{confidence} confidence</div>
+    <div style="font-size:10px;color:#999ea6;margin-top:4px;">{confidence} confidence</div>
   </div>
 </div>
 
-<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:8px;padding:16px;margin-bottom:12px;">
-  <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">📊 Confidence Band — Fair Value Range</div>
+<div style="background:#0f1318;border:1px solid #1e2530;border-radius:2px;padding:16px;margin-bottom:12px;">
+  <div style="font-size:10px;color:#999ea6;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">📊 Confidence Band — Fair Value Range</div>
   <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:6px;">
     <span>Bear {bear_left}</span>
-    <span style="color:#FFF;font-weight:600;">Fair Value {fv_pct}</span>
+    <span style="color:#eef2f9;font-weight:600;">Fair Value {fv_pct}</span>
     <span>Bull {bull_right}</span>
   </div>
-  <div style="background:#1A1A1A;border-radius:4px;height:8px;position:relative;overflow:hidden;">
+  <div style="background:#1c2028;border-radius:4px;height:8px;position:relative;overflow:hidden;">
     <div style="position:absolute;left:0;top:0;height:100%;width:100%;background:linear-gradient(90deg,#DC2626 0%,#F59E0B 50%,#00C2A8 100%);opacity:0.3;border-radius:4px;"></div>
     <div style="position:absolute;left:{fv_pos:.0f}%;top:-2px;width:3px;height:12px;background:#FFF;border-radius:2px;transform:translateX(-50%);"></div>
   </div>
-  <div style="font-size:10px;color:#444;margin-top:6px;text-align:center;">If correct, current price of {cp:.0%} is outside this range → potential edge</div>
+  <div style="font-size:10px;color:#636870;margin-top:6px;text-align:center;">If correct, current price of {cp:.0%} is outside this range → potential edge</div>
 </div>
 
-<div style="background:#0D0D0D;border:1px solid #1A1A1A;border-left:3px solid {vc};border-radius:6px;padding:16px;margin-bottom:12px;">
+<div style="background:#0f1318;border:1px solid #1e2530;border-left:3px solid {vc};border-radius:1px;padding:16px;margin-bottom:12px;">
   <div style="font-size:11px;color:#888;line-height:1.7;">{reasoning}</div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
-  <div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:6px;padding:12px;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Key Risk</div>
-    <div style="font-size:12px;color:#CCC;">{key_risk}</div>
+  <div style="background:#0f1318;border:1px solid #1e2530;border-radius:1px;padding:12px;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Key Risk</div>
+    <div style="font-size:12px;color:#c5cad3;">{key_risk}</div>
   </div>
-  <div style="background:#0D0D0D;border:1px solid #1A1A1A;border-radius:6px;padding:12px;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Historical Base Rate</div>
-    <div style="font-size:12px;color:#CCC;">{base_rate}</div>
+  <div style="background:#0f1318;border:1px solid #1e2530;border-radius:1px;padding:12px;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Historical Base Rate</div>
+    <div style="font-size:12px;color:#c5cad3;">{base_rate}</div>
   </div>
-  <div style="background:#0D0D0D;border:1px solid {liq_color}22;border-radius:6px;padding:12px;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Liquidity</div>
+  <div style="background:#0f1318;border:1px solid {liq_color}22;border-radius:1px;padding:12px;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Liquidity</div>
     <div style="font-size:13px;font-weight:700;color:{liq_color};">{liq_label}</div>
-    <div style="font-size:10px;color:#555;margin-top:2px;">{liq_desc}</div>
+    <div style="font-size:10px;color:#999ea6;margin-top:2px;">{liq_desc}</div>
   </div>
 </div>
 {narrative_html}"""
     else:
         verdict_html = f"""
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-  <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:16px;text-align:center;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Current Price</div>
+  <div style="background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:16px;text-align:center;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Current Price</div>
     <div style="font-size:28px;font-weight:700;color:#fff;">{cp:.0%}</div>
   </div>
-  <div style="background:#111;border:1px solid #1E1E1E;border-radius:8px;padding:16px;text-align:center;">
-    <div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Edge Score</div>
+  <div style="background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:16px;text-align:center;">
+    <div style="font-size:10px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Edge Score</div>
     <div style="font-size:28px;font-weight:700;color:{ec};">{edge_score}</div>
   </div>
 </div>"""
@@ -1720,29 +1823,29 @@ def render_research_card(row, research, news, edge_score, df_all):
         for a in news[:4]:
             news_items += f"""<div style="padding:10px 0;border-bottom:1px solid #151515;">
   <a href="{a['url']}" target="_blank" style="font-size:13px;color:#E0E0E0;text-decoration:none;font-weight:500;line-height:1.4;">{a['title']}</a>
-  <div style="font-size:10px;color:#444;margin-top:4px;">{a['source']} · {a['published']}</div>
+  <div style="font-size:10px;color:#636870;margin-top:4px;">{a['source']} · {a['published']}</div>
 </div>"""
         news_html = f"""<div style="margin-bottom:16px;">
-<div style="font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">📰 Recent News</div>
+<div style="font-size:10px;color:#999ea6;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">📰 Recent News</div>
 {news_items}
 </div>"""
     else:
-        news_html = '<div style="font-size:12px;color:#444;margin-bottom:16px;">No recent news found for this market.</div>'
+        news_html = '<div style="font-size:12px;color:#636870;margin-bottom:16px;">No recent news found for this market.</div>'
 
     card = f"""
-<div style="background:#111111;border:1px solid #1E1E1E;border-radius:12px;padding:24px;margin-bottom:16px;">
+<div style="background:#14181e;border:1px solid #1e2530;border-radius:2px;padding:24px;margin-bottom:16px;">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
     <div style="flex:1;margin-right:16px;">
-      <div style="font-size:10px;color:#444;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">{src_label} · {get_sport_label(row.get('ticker',''), row.get('event_ticker','')) or row['category']}</div>
-      <div style="font-size:16px;font-weight:600;color:#FFF;line-height:1.4;">{row['event_ticker']}</div>
+      <div style="font-size:10px;color:#636870;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">{src_label} · {get_sport_label(row.get('ticker',''), row.get('event_ticker','')) or row['category']}</div>
+      <div style="font-size:16px;font-weight:600;color:#eef2f9;line-height:1.4;">{row['event_ticker']}</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
       <div style="text-align:center;">
-        <div style="font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">EDGE</div>
+        <div style="font-size:9px;color:#636870;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">EDGE</div>
         <div style="font-size:20px;font-weight:700;color:{ec};">{edge_score}</div>
         <div style="font-size:9px;color:{ec};letter-spacing:0.06em;">{edge_score_label(edge_score)}</div>
       </div>
-      <a href="{bet_url}" target="_blank" style="background:#FFF;color:#000;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:10px 20px;border-radius:5px;text-decoration:none;">Bet →</a>
+      <a href="{bet_url}" target="_blank" style="border:1px solid {_RED};color:{_RED};font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;padding:8px 18px;border-radius:1px;text-decoration:none;">BET →</a>
     </div>
   </div>
   {verdict_html}
@@ -1756,7 +1859,7 @@ def render_research_card(row, research, news, edge_score, df_all):
 with tab4:
     st.markdown("## 🔍 Market Research Terminal")
     st.markdown(
-        "<div style='color:#555;font-size:14px;margin-bottom:28px;'>Search any topic. We surface live markets, score each edge opportunity, pull recent news, and give you a verdict.</div>",
+        "<div style='color:#999ea6;font-size:14px;margin-bottom:28px;'>Search any topic. We surface live markets, score each edge opportunity, pull recent news, and give you a verdict.</div>",
         unsafe_allow_html=True,
     )
 
@@ -2118,7 +2221,7 @@ with tab4:
 
                 types_in_grp = [t for t in _TYPE_ORDER if t in grp["market_type"].values]
                 type_chips = "  ".join(
-                    f'<span style="background:#1A1A1A;color:#777;font-size:9px;padding:2px 6px;border-radius:3px;">{t}</span>'
+                    f'<span style="background:#1c2028;color:#777;font-size:9px;padding:2px 6px;border-radius:3px;">{t}</span>'
                     for t in types_in_grp
                 )
 
@@ -2128,7 +2231,7 @@ with tab4:
 
                 with st.expander(exp_label, expanded=auto_open):
                     st.markdown(
-                        f'<div style="margin-bottom:10px;font-size:11px;color:#555;">'
+                        f'<div style="margin-bottom:10px;font-size:11px;color:#999ea6;">'
                         f'{src_icons} &nbsp; {type_chips}</div>',
                         unsafe_allow_html=True
                     )
@@ -2137,7 +2240,7 @@ with tab4:
                         if type_rows.empty:
                             continue
                         st.markdown(
-                            f'<div style="font-size:9px;color:#444;letter-spacing:0.1em;text-transform:uppercase;'
+                            f'<div style="font-size:9px;color:#636870;letter-spacing:0.1em;text-transform:uppercase;'
                             f'padding:8px 0 4px;">{mtype}</div>',
                             unsafe_allow_html=True
                         )
@@ -2163,11 +2266,11 @@ with tab4:
                             )
                             _rc = st.columns([5, 1, 1, 1, 1, 1, 1])
                             _rc[0].markdown(
-                                f'<div style="font-size:13px;color:#CCC;padding:4px 0;">{title_txt}</div>',
+                                f'<div style="font-size:13px;color:#c5cad3;padding:4px 0;">{title_txt}</div>',
                                 unsafe_allow_html=True
                             )
                             _rc[1].markdown(
-                                f'<div style="font-size:13px;color:#FFF;font-weight:600;padding:4px 0;">{cp:.0%}</div>',
+                                f'<div style="font-size:13px;color:#eef2f9;font-weight:600;padding:4px 0;">{cp:.0%}</div>',
                                 unsafe_allow_html=True
                             )
                             _rc[2].markdown(
@@ -2185,9 +2288,10 @@ with tab4:
                                 unsafe_allow_html=True
                             )
                             _rc[4].markdown(
-                                f'<a href="{bet_url}" target="_blank" style="font-size:10px;background:#FFF;'
-                                f'color:#000;padding:4px 8px;border-radius:3px;font-weight:700;'
-                                f'text-decoration:none;display:inline-block;margin-top:2px;">Bet →</a>',
+                                f'<a href="{bet_url}" target="_blank" style="font-size:9px;border:1px solid {_RED};'
+                                f'color:{_RED};padding:4px 8px;border-radius:1px;font-weight:700;letter-spacing:0.1em;'
+                                f'text-transform:uppercase;text-decoration:none;display:inline-block;margin-top:2px;'
+                                f'transition:all 0.15s ease;">BET →</a>',
                                 unsafe_allow_html=True
                             )
                             _sc_key = f"sc_{bet['ticker']}"
