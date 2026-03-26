@@ -49,7 +49,7 @@ st.markdown(f"""
 *, *::before, *::after {{ box-sizing: border-box; }}
 body, h1, h2, h3, h4, h5, h6, a, button, input, textarea, select, label, td, th, li, table, code, pre,
 p:not([class*="arrow"]),
-span:not([class*="arrow"]):not([role="img"]),
+span:not([class*="arrow"]):not([role="img"]):not([translate="no"]):not([aria-hidden="true"]),
 div:not([class*="arrow"]) {{
     font-family: var(--font) !important;
 }}
@@ -286,7 +286,11 @@ table tr:hover td {{ background: rgba(249,0,0,0.03); }}
     z-index: 9999;
 }}
 
-/* ── expander icon: span[role="img"] excluded above so Material Symbols ligatures render correctly ── */
+/* ── expander icon: restore Material Symbols font on icon spans (Streamlit 1.55 uses translate="no") ── */
+span[translate="no"], span[aria-hidden="true"] {{
+    font-family: 'Material Symbols Rounded' !important;
+    font-feature-settings: 'liga' 1 !important;
+}}
 
 /* ── landing header ── */
 .cb-nav {{
@@ -2398,11 +2402,11 @@ with tab4:
 
                 # Use game date for urgency when available (Kalshi close_time is ~14d after game)
                 if pd.notna(days_to_game):
-                    badge     = (" 🟢 TONIGHT" if days_to_game <= 0
+                    badge     = (" 🟡 TODAY" if days_to_game == 0
                                  else " 🟡 TOMORROW" if days_to_game == 1
                                  else " 🟡 THIS WEEK" if days_to_game <= 6
                                  else "")
-                    auto_open = days_to_game <= 1
+                    auto_open = days_to_game == 0 or days_to_game == 1
                     _gd_str   = f"{int(game_date.day)} {game_date.strftime('%b')}"
                     date_chip = f"🗓 {_gd_str}"
                 else:
