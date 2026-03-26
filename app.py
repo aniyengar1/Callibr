@@ -46,7 +46,11 @@ st.markdown(f"""
 }}
 
 /* ── global ── */
-*, *::before, *::after {{ font-family: var(--font) !important; box-sizing: border-box; }}
+*, *::before, *::after {{ box-sizing: border-box; }}
+body, p, h1, h2, h3, h4, h5, h6, a, button, input, textarea, select, label, td, th, li, table, code, pre,
+span:not([class*="arrow"]), div:not([class*="arrow"]) {{
+    font-family: var(--font) !important;
+}}
 html, body {{ background: var(--bg1) !important; color: var(--t1) !important; }}
 .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {{
     background: var(--bg1) !important;
