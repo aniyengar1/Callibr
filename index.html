@@ -62,14 +62,15 @@ nav {
 /* ── hero ── */
 #hero {
   min-height: 100vh;
+  padding: 0;
   display: flex; flex-direction: column;
   border-bottom: 1px solid var(--bord);
 }
 .hero-cube-wrap {
   flex: 1;
+  min-height: 480px;
   display: flex; align-items: center; justify-content: center;
-  padding: 100px 40px 40px;
-  overflow: hidden;
+  padding-top: 80px;
 }
 .hero-bottom {
   padding: 0 6vw;
@@ -148,11 +149,11 @@ nav {
 
 /* ── 3D cube ── */
 .cube-scene {
-  perspective: 1100px;
-  width: 310px; height: 540px; flex-shrink: 0;
+  perspective: 1000px;
+  width: 280px; height: 460px; flex-shrink: 0;
 }
 .cube {
-  width: 310px; height: 540px;
+  width: 280px; height: 460px;
   position: relative;
   transform-style: preserve-3d;
   animation: cube-spin 22s linear infinite;
@@ -163,16 +164,16 @@ nav {
   to   { transform: rotateX(-12deg) rotateY(360deg); }
 }
 .face {
-  position: absolute; width: 310px; height: 540px;
-  display: flex; gap: 4px; padding: 4px;
+  position: absolute; width: 280px; height: 460px;
+  display: flex; gap: 3px; padding: 3px;
   overflow: hidden;
   backface-visibility: hidden;
   background: #080b0f;
 }
-.face-front { transform: translateZ(155px); }
-.face-back  { transform: rotateY(180deg) translateZ(155px); }
-.face-right { transform: rotateY(90deg)  translateZ(155px); }
-.face-left  { transform: rotateY(-90deg) translateZ(155px); }
+.face-front { transform: translateZ(140px); }
+.face-back  { transform: rotateY(180deg) translateZ(140px); }
+.face-right { transform: rotateY(90deg)  translateZ(140px); }
+.face-left  { transform: rotateY(-90deg) translateZ(140px); }
 
 /* fade top/bottom edges of each face */
 .face::before, .face::after {
@@ -405,14 +406,14 @@ footer {
 .footer-copy { font-size: 10px; color: var(--t3); }
 
 @media (max-width: 900px) {
-  .hero-cube-wrap { padding: 80px 20px 30px; }
-  .cube-scene { width: 240px; height: 420px; }
-  .cube { width: 240px; height: 420px; }
-  .face { width: 240px; height: 420px; }
-  .face-front { transform: translateZ(120px); }
-  .face-back  { transform: rotateY(180deg) translateZ(120px); }
-  .face-right { transform: rotateY(90deg)  translateZ(120px); }
-  .face-left  { transform: rotateY(-90deg) translateZ(120px); }
+  .hero-cube-wrap { min-height: 360px; padding-top: 80px; }
+  .cube-scene { width: 210px; height: 360px; }
+  .cube { width: 210px; height: 360px; }
+  .face { width: 210px; height: 360px; }
+  .face-front { transform: translateZ(105px); }
+  .face-back  { transform: rotateY(180deg) translateZ(105px); }
+  .face-right { transform: rotateY(90deg)  translateZ(105px); }
+  .face-left  { transform: rotateY(-90deg) translateZ(105px); }
   .hero-titles, .stats-grid, .waitlist-grid { grid-template-columns: 1fr; }
   .stats-left { padding-right: 0; border-right: none; border-bottom: 1px solid var(--bord); padding-bottom: 56px; }
   .stats-right { padding-left: 0; padding-top: 56px; }
