@@ -49,7 +49,7 @@ st.markdown(f"""
 *, *::before, *::after {{ box-sizing: border-box; }}
 body, h1, h2, h3, h4, h5, h6, a, button, input, textarea, select, label, td, th, li, table, code, pre,
 p:not([class*="arrow"]),
-span:not([class*="arrow"]),
+span:not([class*="arrow"]):not([role="img"]),
 div:not([class*="arrow"]) {{
     font-family: var(--font) !important;
 }}
@@ -188,6 +188,24 @@ h3 {{ font-size: 12px !important; color: var(--t2) !important; }}
     border-bottom: 1px solid var(--bord) !important;
 }}
 
+/* ── hide broken arrow text; replace with unicode indicator ── */
+p.arrow_down, p.arrow_up,
+[class*="arrow_down"], [class*="arrow_up"] {{
+    display: none !important;
+}}
+[data-testid="stExpander"] summary::after {{
+    content: '▾';
+    font-size: 11px;
+    color: var(--t3);
+    margin-left: 6px;
+    font-family: monospace !important;
+    float: right;
+}}
+[data-testid="stExpander"] details[open] > summary::after {{
+    content: '▴';
+    color: var(--t2);
+}}
+
 /* ── dataframes ── */
 [data-testid="stDataFrame"] {{
     border: 1px solid var(--bord) !important;
@@ -268,8 +286,7 @@ table tr:hover td {{ background: rgba(249,0,0,0.03); }}
     z-index: 9999;
 }}
 
-/* ── expander arrow: keep Streamlit's native icon font intact ── */
-/* p:not([class*="arrow"]) above ensures p.arrow_down doesn't inherit Geist Mono */
+/* ── expander icon: span[role="img"] excluded above so Material Symbols ligatures render correctly ── */
 
 /* ── landing header ── */
 .cb-nav {{
@@ -1623,10 +1640,27 @@ def fetch_news(query, max_articles=5):
         return []
 
 @st.cache_data(ttl=3600)
-def generate_market_research(market_title, current_price, category, edge_score, price_change_pct, news_headlines, today_date="", player_stats_summary="", sport_label=""):
+def generate_market_research(market_title, current_price, category, edge_score, price_change_pct, news_headlines, today_date="", player_stats_summary="", sport_label="", days_to_close=None):
     """Call Claude Sonnet to generate a sharp market research card."""
     if not ANTHROPIC_API_KEY:
         return None
+
+    # Guard: same-day sports markets have near-zero useful NewsAPI coverage.
+    # Returning a fabricated high-confidence verdict would destroy user trust.
+    if category == "Sports" and days_to_close is not None and not (hasattr(days_to_close, '__float__') and str(days_to_close) == 'nan') and float(days_to_close) <= 0.5 and not player_stats_summary:
+        return {
+            "fair_value": current_price,
+            "bear_case": max(0.01, current_price - 0.08),
+            "bull_case": min(0.99, current_price + 0.08),
+            "verdict": "FAIRLY PRICED",
+            "confidence": "LOW",
+            "reasoning": "Market closes today. NewsAPI has limited same-day sports coverage — no reliable news signal was found to justify a directional verdict.",
+            "key_risk": "Live game conditions, injuries, or line-ups not reflected in available news.",
+            "base_rate": "N/A",
+            "narrative_flag": False,
+            "narrative_flag_reason": "",
+            "_data_warning": "Same-day sports market — AI verdict reliability is reduced. NewsAPI does not surface real-time game data.",
+        }
 
     news_block = ""
     if news_headlines:
@@ -1883,6 +1917,15 @@ def render_research_card(row, research, news, edge_score, df_all):
         band_range = max(bull - bear, 0.01)
         fv_pos = min(max((fv - bear) / band_range * 100, 5), 95)
 
+        # Build data-quality warning if present
+        data_warning = research.get("_data_warning", "")
+        data_warning_html = ""
+        if data_warning:
+            data_warning_html = f"""<div style="background:#111800;border:1px solid #F59E0B55;border-left:3px solid #F59E0B;border-radius:1px;padding:14px;margin-bottom:12px;">
+  <div style="font-size:10px;color:#F59E0B;letter-spacing:0.1em;font-weight:700;text-transform:uppercase;margin-bottom:4px;">⚠️ Limited Data Coverage</div>
+  <div style="font-size:12px;color:#c5cad3;">{data_warning}</div>
+</div>"""
+
         # Build narrative gap HTML conditionally — avoids .format() KeyError
         narrative_html = ""
         if narrative_flag:
@@ -1941,7 +1984,7 @@ def render_research_card(row, research, news, edge_score, df_all):
     <div style="font-size:10px;color:#999ea6;margin-top:2px;">{liq_desc}</div>
   </div>
 </div>
-{narrative_html}"""
+{data_warning_html}{narrative_html}"""
     else:
         verdict_html = f"""
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
@@ -2508,6 +2551,7 @@ with tab4:
                         today_date=_dt2.date.today().strftime("%B %d, %Y"),
                         player_stats_summary=_dr_st_txt,
                         sport_label=_dr_sport_lbl,
+                        days_to_close=_dr_row.get("days_to_close"),
                     )
                 if _dr_research and _dr_research.get("_error"):
                     st.error(f"⚠️ AI verdict failed: {_dr_research['_error']}")
