@@ -68,7 +68,7 @@ nav {
 }
 .hero-cube-wrap {
   flex: 1;
-  min-height: 480px;
+  min-height: 300px;
   display: flex; align-items: center; justify-content: center;
   padding-top: 80px;
 }
@@ -78,7 +78,7 @@ nav {
 
 .hero-nav-strip {
   display: flex; justify-content: space-between; align-items: center;
-  padding-top: 100px; padding-bottom: 24px;
+  padding-top: 20px; padding-bottom: 24px;
   border-bottom: 1px solid var(--bord);
 }
 .hero-strip-links { display: flex; gap: 0; }
@@ -149,11 +149,11 @@ nav {
 
 /* ── 3D cube ── */
 .cube-scene {
-  perspective: 1000px;
-  width: 280px; height: 460px; flex-shrink: 0;
+  perspective: 900px;
+  width: 260px; height: 360px; flex-shrink: 0;
 }
 .cube {
-  width: 280px; height: 460px;
+  width: 260px; height: 360px;
   position: relative;
   transform-style: preserve-3d;
   animation: cube-spin 22s linear infinite;
@@ -164,16 +164,16 @@ nav {
   to   { transform: rotateX(-12deg) rotateY(360deg); }
 }
 .face {
-  position: absolute; width: 280px; height: 460px;
+  position: absolute; width: 260px; height: 360px;
   display: flex; gap: 3px; padding: 3px;
   overflow: hidden;
   backface-visibility: hidden;
   background: #080b0f;
 }
-.face-front { transform: translateZ(140px); }
-.face-back  { transform: rotateY(180deg) translateZ(140px); }
-.face-right { transform: rotateY(90deg)  translateZ(140px); }
-.face-left  { transform: rotateY(-90deg) translateZ(140px); }
+.face-front { transform: translateZ(130px); }
+.face-back  { transform: rotateY(180deg) translateZ(130px); }
+.face-right { transform: rotateY(90deg)  translateZ(130px); }
+.face-left  { transform: rotateY(-90deg) translateZ(130px); }
 
 /* fade top/bottom edges of each face */
 .face::before, .face::after {
