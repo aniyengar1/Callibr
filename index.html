@@ -62,10 +62,19 @@ nav {
 /* ── hero ── */
 #hero {
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: 55fr 45fr;
+  border-bottom: 1px solid var(--bord);
+}
+.hero-left {
   padding: 0 6vw;
   display: flex; flex-direction: column; justify-content: flex-end;
-  padding-bottom: 0;
-  border-bottom: 1px solid var(--bord);
+  border-right: 1px solid var(--bord);
+}
+.hero-right {
+  display: flex; align-items: center; justify-content: center;
+  padding: 80px 40px; overflow: hidden;
+  background: var(--bg);
 }
 
 .hero-nav-strip {
@@ -96,7 +105,7 @@ nav {
   border-bottom: 1px solid var(--bord); gap: 32px;
 }
 .hero-name {
-  font-size: clamp(64px, 10vw, 148px);
+  font-size: clamp(48px, 7vw, 120px);
   font-weight: 700; color: var(--t1);
   letter-spacing: 0.02em; line-height: 0.88;
   text-transform: uppercase;
@@ -137,6 +146,60 @@ nav {
 .hero-ctas {
   display: flex; gap: 12px; padding: 28px 0;
   border-top: 1px solid var(--bord);
+}
+
+/* ── 3D cube ── */
+.cube-scene {
+  perspective: 900px;
+  width: 270px; height: 460px; flex-shrink: 0;
+}
+.cube {
+  width: 270px; height: 460px;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: cube-spin 24s linear infinite;
+}
+.cube:hover { animation-play-state: paused; }
+@keyframes cube-spin {
+  from { transform: rotateX(-14deg) rotateY(0deg); }
+  to   { transform: rotateX(-14deg) rotateY(360deg); }
+}
+.face {
+  position: absolute; width: 270px; height: 460px;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 3px; padding: 3px;
+  backface-visibility: hidden;
+}
+.face-front { transform: translateZ(135px); }
+.face-back  { transform: rotateY(180deg) translateZ(135px); }
+.face-right { transform: rotateY(90deg)  translateZ(135px); }
+.face-left  { transform: rotateY(-90deg) translateZ(135px); }
+.tile {
+  background: #0f1318;
+  border: 1px solid #1e2530;
+  padding: 7px 8px;
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
+}
+.tile::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+}
+.tile-cat {
+  font-size: 7px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 600; margin-bottom: 3px;
+}
+.tile-name {
+  font-size: 9px; font-weight: 700; color: #eef2f9;
+  line-height: 1.25; flex: 1;
+}
+.tile-market {
+  font-size: 7px; color: #4a5060; margin-top: 4px;
+  letter-spacing: 0.04em;
+}
+.tile-prob {
+  font-size: 14px; font-weight: 700; color: #eef2f9;
+  margin-top: 4px; letter-spacing: -0.02em;
 }
 .btn-primary {
   font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
@@ -316,7 +379,10 @@ footer {
 .footer-links a:hover { color: var(--t1); }
 .footer-copy { font-size: 10px; color: var(--t3); }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
+  #hero { grid-template-columns: 1fr; }
+  .hero-right { display: none; }
+  .hero-left { border-right: none; }
   .hero-titles, .stats-grid, .waitlist-grid { grid-template-columns: 1fr; }
   .stats-left { padding-right: 0; border-right: none; border-bottom: 1px solid var(--bord); padding-bottom: 56px; }
   .stats-right { padding-left: 0; padding-top: 56px; }
@@ -338,42 +404,45 @@ footer {
 </nav>
 
 <section id="hero">
-  <!-- nav strip -->
-  <div class="hero-nav-strip">
-    <div class="hero-strip-links">
-      <a href="#features" class="hero-strip-link">Markets,</a>
-      <a href="#features" class="hero-strip-link">Research,</a>
-      <a href="#features" class="hero-strip-link">Backtesting,</a>
-      <a href="#waitlist" class="hero-strip-link">Early Access</a>
+  <!-- left: text content -->
+  <div class="hero-left">
+    <div class="hero-nav-strip">
+      <div class="hero-strip-links">
+        <a href="#features" class="hero-strip-link">Markets,</a>
+        <a href="#features" class="hero-strip-link">Research,</a>
+        <a href="#features" class="hero-strip-link">Backtesting,</a>
+        <a href="#waitlist" class="hero-strip-link">Early Access</a>
+      </div>
+      <div class="hero-strip-status">
+        <div class="hero-dot"></div>
+        Live Data
+      </div>
     </div>
-    <div class="hero-strip-status">
-      <div class="hero-dot"></div>
-      Live Data
+    <div class="hero-titles">
+      <div>
+        <div class="hero-name">CALLIBR<span>.</span></div>
+        <div class="hero-role">Prediction Market Intelligence</div>
+      </div>
+      <div class="hero-meta">
+        Markets N°3,000+ / Live Feed<br>
+        Est. 2025<br>
+        Ref. PRED-032026-R01
+      </div>
+    </div>
+    <div class="ticker-wrap">
+      <div class="ticker" id="tickerEl"></div>
+    </div>
+    <div class="hero-ctas">
+      <a href="#waitlist" class="btn-primary">Join the Waitlist</a>
+      <a href="https://getcallibr.streamlit.app" class="btn-ghost">Try the App →</a>
     </div>
   </div>
 
-  <!-- titles block -->
-  <div class="hero-titles">
-    <div>
-      <div class="hero-name">CALLIBR<span>.</span></div>
-      <div class="hero-role">Prediction Market Intelligence</div>
+  <!-- right: 3D rotating cube -->
+  <div class="hero-right">
+    <div class="cube-scene">
+      <div class="cube" id="cube"></div>
     </div>
-    <div class="hero-meta">
-      Markets N°3,000+ / Live Feed<br>
-      Est. 2025<br>
-      Ref. PRED-032026-R01
-    </div>
-  </div>
-
-  <!-- scrolling ticker -->
-  <div class="ticker-wrap">
-    <div class="ticker" id="tickerEl"></div>
-  </div>
-
-  <!-- ctas -->
-  <div class="hero-ctas">
-    <a href="#waitlist" class="btn-primary">Join the Waitlist</a>
-    <a href="https://getcallibr.streamlit.app" class="btn-ghost">Try the App →</a>
   </div>
 </section>
 
@@ -485,6 +554,54 @@ footer {
 </footer>
 
 <script>
+// ── 3D cube ──────────────────────────────────────────────────────────────────
+const TILES = [
+  { cat:'NBA',      color:'#00C2A8', name:'LeBron James',    market:'MVP odds',          prob:'8%'  },
+  { cat:'NBA',      color:'#00C2A8', name:'Nikola Jokić',    market:'MVP 2026',          prob:'44%' },
+  { cat:'NBA',      color:'#00C2A8', name:'Steph Curry',     market:'3PT leader',        prob:'31%' },
+  { cat:'NFL',      color:'#00C2A8', name:'Patrick Mahomes', market:'Super Bowl MVP',    prob:'22%' },
+  { cat:'NFL',      color:'#00C2A8', name:'Josh Allen',      market:'Season MVP',        prob:'35%' },
+  { cat:'Soccer',   color:'#00C2A8', name:'Erling Haaland',  market:'Golden Boot',       prob:'28%' },
+  { cat:'Soccer',   color:'#00C2A8', name:'Kylian Mbappé',   market:'CL winner',         prob:'19%' },
+  { cat:'Tennis',   color:'#00C2A8', name:'Carlos Alcaraz',  market:'Wimbledon 2026',    prob:'33%' },
+  { cat:'Boxing',   color:'#00C2A8', name:'Canelo Álvarez',  market:'Next fight win',    prob:'71%' },
+  { cat:'UFC',      color:'#00C2A8', name:'Jon Jones',       market:'Retain title',      prob:'58%' },
+  { cat:'NHL',      color:'#00C2A8', name:'Connor McDavid',  market:'Scoring title',     prob:'52%' },
+  { cat:'MLB',      color:'#00C2A8', name:'Shohei Ohtani',   market:'HR leader',         prob:'29%' },
+  { cat:'Politics', color:'#F59E0B', name:'Trump',           market:'Approval > 50%',    prob:'29%' },
+  { cat:'Politics', color:'#F59E0B', name:'Kamala Harris',   market:'2028 nominee',      prob:'18%' },
+  { cat:'Politics', color:'#F59E0B', name:'Elon Musk',       market:'DOGE disbanded',    prob:'41%' },
+  { cat:'Crypto',   color:'#8B5CF6', name:'Bitcoin',         market:'> $120k EOY',       prob:'38%' },
+  { cat:'Tech',     color:'#8B5CF6', name:'OpenAI',          market:'GPT-5 by June',     prob:'55%' },
+  { cat:'Tech',     color:'#8B5CF6', name:'SpaceX',          market:'Mars 2026',         prob:'7%'  },
+  { cat:'Music',    color:'#f90000', name:'Taylor Swift',    market:'Album drop Q2',     prob:'62%' },
+  { cat:'Awards',   color:'#f90000', name:'Oscars 2026',     market:'Best Pic favourite',prob:'44%' },
+];
+
+function makeTile(t) {
+  const d = document.createElement('div');
+  d.className = 'tile';
+  d.style.setProperty('--tc', t.color);
+  d.innerHTML = `
+    <div class="tile-cat" style="color:${t.color}">${t.cat}</div>
+    <div class="tile-name">${t.name}</div>
+    <div class="tile-market">${t.market}</div>
+    <div class="tile-prob">${t.prob}</div>`;
+  d.style.cssText += `border-top:1px solid ${t.color}40;`;
+  return d;
+}
+
+const FACE_NAMES = ['face-front','face-right','face-back','face-left'];
+const cube = document.getElementById('cube');
+FACE_NAMES.forEach((fname, fi) => {
+  const face = document.createElement('div');
+  face.className = `face ${fname}`;
+  for (let i = 0; i < 15; i++) {
+    face.appendChild(makeTile(TILES[(fi * 15 + i) % TILES.length]));
+  }
+  cube.appendChild(face);
+});
+
 // ── ticker ──────────────────────────────────────────────────────────────────
 const TICKER_ITEMS = [
   "Polymarket", "Kalshi", "NBA", "NFL", "NHL", "MLB",
