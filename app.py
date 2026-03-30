@@ -371,174 +371,71 @@ NEWSAPI_KEY       = st.secrets.get("NEWSAPI_KEY", "")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ── waitlist gate ─────────────────────────────────────────────────────────────
-def _waitlist_count():
-    try:
-        res = supabase.table("waitlist").select("id", count="exact").execute()
-        return res.count or 0
-    except Exception:
-        return 0
-
-def _show_landing():
-    """Full-page branded landing / waitlist gate. Calls st.stop() at the end."""
+def _show_access_gate():
+    """Email check for approved waitlist users. Calls st.stop()."""
     st.markdown(f"""
 <style>
-.wl-wrap {{
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 80px 24px 40px;
+.gate-wrap {{
+  max-width: 400px;
+  margin: 120px auto 0;
+  padding: 0 24px;
   font-family: var(--font);
-}}
-.wl-logo {{
-  font-size: 11px;
-  letter-spacing: 0.28em;
-  color: {_RED};
-  font-weight: 700;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}}
-.wl-title {{
-  font-size: 38px;
-  font-weight: 700;
-  color: {_T1};
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  margin-bottom: 12px;
-}}
-.wl-sub {{
-  font-size: 14px;
-  color: {_T2};
-  line-height: 1.6;
-  margin-bottom: 36px;
-}}
-.wl-feature {{
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 12px;
-  font-size: 13px;
-  color: {_T2};
-}}
-.wl-feature-icon {{
-  color: {_GREEN};
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}}
-.wl-divider {{
-  border: none;
-  border-top: 1px solid {_BORD};
-  margin: 32px 0;
-}}
-.wl-count {{
-  font-size: 11px;
-  color: {_T3};
-  letter-spacing: 0.1em;
   text-align: center;
-  margin-top: 20px;
 }}
-.wl-count span {{ color: {_T2}; font-weight: 600; }}
+.gate-logo {{
+  font-size: 11px; letter-spacing: 0.28em; color: {_RED};
+  font-weight: 700; text-transform: uppercase; margin-bottom: 32px;
+}}
+.gate-title {{
+  font-size: 20px; font-weight: 600; color: {_T1};
+  margin-bottom: 8px; letter-spacing: -0.01em;
+}}
+.gate-sub {{
+  font-size: 12px; color: {_T3}; margin-bottom: 28px; line-height: 1.6;
+}}
 </style>
-<div class="wl-wrap">
-  <div class="wl-logo">Callibr</div>
-  <div class="wl-title">Prediction Market<br>Intelligence.</div>
-  <div class="wl-sub">
-    Live markets from Polymarket &amp; Kalshi. AI-scored edges.
-    Smarter parlays. The edge serious bettors actually use.
+<div class="gate-wrap">
+  <div class="gate-logo">Callibr.</div>
+  <div class="gate-title">Early access only.</div>
+  <div class="gate-sub">
+    Enter your approved email to continue.<br>
+    Don't have access yet?
+    <a href="https://getcallibr.app" target="_blank"
+       style="color:{_T2};text-decoration:underline;">Join the waitlist →</a>
   </div>
-  <div class="wl-feature">
-    <span class="wl-feature-icon">▸</span>
-    <span>Live NBA, NHL, MLB &amp; NFL scores linked to open markets</span>
-  </div>
-  <div class="wl-feature">
-    <span class="wl-feature-icon">▸</span>
-    <span>Edge scores on every market — know when the crowd is wrong</span>
-  </div>
-  <div class="wl-feature">
-    <span class="wl-feature-icon">▸</span>
-    <span>AI research terminal with news, stats &amp; a verdict on every bet</span>
-  </div>
-  <div class="wl-feature">
-    <span class="wl-feature-icon">▸</span>
-    <span>Parlay builder that optimises for your stake and target payout</span>
-  </div>
-  <hr class="wl-divider">
 </div>
 """, unsafe_allow_html=True)
 
-    # centre the Streamlit widgets inside the same max-width column
-    _, _wl_col, _ = st.columns([1, 2, 1])
-    with _wl_col:
-        _mode = st.radio(
-            "Mode",
-            ["Join the waitlist", "I already have access"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="wl_mode",
+    _, _gc, _ = st.columns([1, 2, 1])
+    with _gc:
+        _email_acc = st.text_input(
+            "Email", placeholder="your@email.com",
+            key="wl_email_access", label_visibility="collapsed"
         )
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-
-        if _mode == "Join the waitlist":
-            _email_in = st.text_input(
-                "Email", placeholder="your@email.com",
-                key="wl_email_join", label_visibility="collapsed"
-            )
-            if st.button("Request access →", use_container_width=True, key="wl_join_btn"):
-                _e = (_email_in or "").strip().lower()
-                if not _e or "@" not in _e:
-                    st.error("Please enter a valid email address.")
-                else:
-                    try:
-                        supabase.table("waitlist").insert({"email": _e}).execute()
-                        st.success(
-                            "You're on the list. We'll be in touch shortly.",
-                            icon="✓"
-                        )
-                    except Exception as _ex:
-                        if "duplicate" in str(_ex).lower() or "unique" in str(_ex).lower():
-                            st.info("That email is already on the waitlist.")
-                        else:
-                            st.error("Something went wrong — please try again.")
-        else:
-            _email_acc = st.text_input(
-                "Email", placeholder="your@email.com",
-                key="wl_email_access", label_visibility="collapsed"
-            )
-            if st.button("Enter →", use_container_width=True, key="wl_access_btn"):
-                _e = (_email_acc or "").strip().lower()
-                if not _e or "@" not in _e:
-                    st.error("Please enter a valid email address.")
-                else:
-                    try:
-                        _res = (supabase.table("waitlist")
-                                .select("email, approved")
-                                .eq("email", _e)
-                                .execute())
-                        if not _res.data:
-                            st.error("Email not found. Join the waitlist first.")
-                        elif not _res.data[0]["approved"]:
-                            st.warning(
-                                "Your access is pending approval. "
-                                "We'll reach out when you're approved."
-                            )
-                        else:
-                            st.session_state["user_email"] = _e
-                            st.rerun()
-                    except Exception:
-                        st.error("Something went wrong — please try again.")
-
-        # live waitlist counter
-        _cnt = _waitlist_count()
-        if _cnt > 0:
-            st.markdown(
-                f'<div class="wl-count" style="text-align:center;margin-top:24px;">'
-                f'<span>{_cnt:,}</span> people on the waitlist</div>',
-                unsafe_allow_html=True,
-            )
+        if st.button("Enter →", use_container_width=True, key="wl_access_btn"):
+            _e = (_email_acc or "").strip().lower()
+            if not _e or "@" not in _e:
+                st.error("Please enter a valid email address.")
+            else:
+                try:
+                    _res = (supabase.table("waitlist")
+                            .select("email, approved")
+                            .eq("email", _e)
+                            .execute())
+                    if not _res.data:
+                        st.error("Email not found. Join the waitlist at getcallibr.app first.")
+                    elif not _res.data[0]["approved"]:
+                        st.warning("Your access is pending approval. We'll reach out when you're in.")
+                    else:
+                        st.session_state["user_email"] = _e
+                        st.rerun()
+                except Exception:
+                    st.error("Something went wrong — please try again.")
     st.stop()
 
-# Gate: show landing to anyone without an active session
+# Gate: require approved waitlist email to access the app
 if not st.session_state.get("user_email"):
-    _show_landing()
+    _show_access_gate()
 
 SOURCE_COLORS = {
     "polymarket":        "#8B5CF6",
