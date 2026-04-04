@@ -821,6 +821,56 @@ def fetch_espn_team_stats(team_name, sport="nba"):
     except Exception:
         return None
 
+@st.cache_data(ttl=900)  # 15-min cache — injury reports change frequently
+def fetch_espn_injuries(sport="nba"):
+    """Fetch current injury reports from ESPN for a given sport."""
+    sport_map = {
+        "nba": ("basketball", "nba"),
+        "nfl": ("football",   "nfl"),
+        "nhl": ("hockey",     "nhl"),
+        "mlb": ("baseball",   "mlb"),
+    }
+    s, league = sport_map.get(sport, ("basketball", "nba"))
+    try:
+        data = requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/{s}/{league}/injuries",
+            timeout=8
+        ).json()
+        injuries = []
+        for team_entry in data.get("injuries", []):
+            team_name = team_entry.get("team", {}).get("displayName", "")
+            for item in team_entry.get("injuries", []):
+                athlete = item.get("athlete", {})
+                detail  = item.get("details", {})
+                status  = item.get("status", "") or detail.get("fantasyStatus", {}).get("description", "")
+                injury_type = detail.get("type", "") or detail.get("detail", "")
+                injuries.append({
+                    "player": athlete.get("displayName", ""),
+                    "team":   team_name,
+                    "status": status,
+                    "type":   injury_type,
+                })
+        return injuries
+    except Exception:
+        return []
+
+def _format_injuries_for_prompt(injuries, teams_involved=None):
+    """Format injury list as a compact string for Claude prompt injection.
+    If teams_involved is a list of team name fragments, only include matching players."""
+    if not injuries:
+        return ""
+    relevant = injuries
+    if teams_involved:
+        relevant = [
+            i for i in injuries
+            if any(frag.lower() in i.get("team", "").lower() for frag in teams_involved)
+        ]
+    if not relevant:
+        return ""
+    lines = [f"  - {i['player']} ({i['team']}): {i['status']}" + (f" — {i['type']}" if i.get('type') else "")
+             for i in relevant[:12]]
+    return "\n".join(lines)
+
 @st.cache_data(ttl=3600)
 def detect_entity_and_fetch_stats(market_title, category, sport_hint=""):
     """Given a market title, try to detect player/team and fetch relevant stats.
@@ -1131,64 +1181,106 @@ _SIGNAL_PATTERNS = [
 ]
 
 def compute_edge_score(row, cat_avg_changes):
+    """Score a market 0–100 for edge potential.
+    Uses cross-source arbitrage (max 35), velocity (max 20), market type (max 15),
+    liquidity (max 15), urgency (max 10), fair-fight zone (max 5). No arbitrary base."""
     cp = row.get("current_price", 0.5)
     title = row.get("event_ticker", "").lower()
+
+    # Hard filters
     if cp <= 0.15 or cp >= 0.85:
         return 0
     if any(p in title for p in _NOISE_PATTERNS):
         return 10 if " vs " in title else 0
-    score = 40.0
-    mid = row.get("mid_price", cp)
-    divergence = abs(cp - mid)
-    score += min(divergence * 80, 25)
-    cat = row.get("category", "Other")
-    cat_avg_change = cat_avg_changes.get(cat, 0)
-    own_change = row.get("price_change_pct", 0)
-    drift_delta = abs(own_change - cat_avg_change)
-    score += min(drift_delta * 0.6, 15)
-    if cp < 0.25 or cp > 0.75:
-        score += 8
-    elif 0.38 <= cp <= 0.62:
-        score -= 8
-    if any(p in title for p in _SIGNAL_PATTERNS):
-        score += 10
+
+    score = 0.0
+
+    # Signal 1: Cross-source arbitrage — max 35pts
+    # If the same market exists on both Polymarket and Kalshi with a price gap,
+    # that divergence is the strongest available edge signal.
+    cross = row.get("cross_source_price")
+    if cross is not None and not pd.isna(cross):
+        arb_gap = abs(cp - float(cross))
+        score += min(arb_gap * 175, 35)
+
+    # Signal 2: Price velocity — max 20pts
+    # How much has the price moved since we started tracking it?
+    vel = abs(row.get("price_change_pct", 0))
+    if vel > 15:   score += 20
+    elif vel > 10: score += 14
+    elif vel > 5:  score += 8
+    elif vel > 2:  score += 4
+
+    # Signal 3: Market type quality — max 15pts
+    # Game winners and spreads are the most efficiently priced and edge-worthy.
+    mtype = row.get("market_type", "")
+    if mtype in ("Game Winner", "Spread", "Match Winner"):   score += 15
+    elif mtype in ("Total Points", "Player Prop", "Half Winner"): score += 10
+    elif mtype == "Series Winner":                             score += 5
+    else:
+        # General prediction markets: use signal keywords as proxy
+        score += 10 if any(p in title for p in _SIGNAL_PATTERNS) else 6
+
+    # Signal 4: Liquidity — max 15pts (snapshot_count proxy for trading activity)
+    snap = row.get("snapshot_count", 1)
+    if snap >= 10:   score += 15
+    elif snap >= 5:  score += 10
+    elif snap >= 3:  score += 5
+
+    # Signal 5: Urgency — max 10pts
+    # Near-term markets matter more; long-dated futures have lots of time for repricing.
     days = row.get("days_to_close", 30)
     if days is not None and not pd.isna(days):
-        if days <= 3:    score += 12
-        elif days <= 7:  score += 7
-        elif days <= 14: score += 3
-    snap = row.get("snapshot_count", 1)
-    if snap >= 5: score += 5
-    elif snap <= 1: score -= 5
+        if 1 <= days <= 3:  score += 10
+        elif days <= 7:      score += 6
+        elif days <= 14:     score += 3
+
+    # Signal 6: Fair-fight zone — max 5pts
+    # Near-50% markets have maximum uncertainty and maximum edge potential.
+    if 0.35 <= cp <= 0.65:
+        score += 5
+
     return min(max(round(score), 0), 100)
 
 def compute_edge_score_breakdown(row, cat_avg_changes):
-    """Returns a dict of labelled component contributions for display."""
+    """Returns labelled component contributions matching the new edge score formula."""
     cp    = row.get("current_price", 0.5)
     title = row.get("event_ticker", "").lower()
     parts = {}
-    parts["Base"] = 40
-    mid       = row.get("mid_price", cp)
-    div       = abs(cp - mid)
-    parts["Divergence"] = round(min(div * 80, 25))
-    cat            = row.get("category", "Other")
-    cat_avg_change = cat_avg_changes.get(cat, 0)
-    own_change     = row.get("price_change_pct", 0)
-    parts["Drift vs category"] = round(min(abs(own_change - cat_avg_change) * 0.6, 15))
-    if cp < 0.25 or cp > 0.75:
-        parts["Price zone"] = 8
-    elif 0.38 <= cp <= 0.62:
-        parts["Price zone"] = -8
+
+    # Cross-source arbitrage
+    cross = row.get("cross_source_price")
+    if cross is not None and not pd.isna(cross):
+        parts["Cross-source arb"] = round(min(abs(cp - float(cross)) * 175, 35))
     else:
-        parts["Price zone"] = 0
-    parts["Signal keywords"] = 10 if any(p in title for p in _SIGNAL_PATTERNS) else 0
+        parts["Cross-source arb"] = 0
+
+    # Velocity
+    vel = abs(row.get("price_change_pct", 0))
+    parts["Price velocity"] = 20 if vel > 15 else (14 if vel > 10 else (8 if vel > 5 else (4 if vel > 2 else 0)))
+
+    # Market type
+    mtype = row.get("market_type", "")
+    if mtype in ("Game Winner", "Spread", "Match Winner"):       parts["Market type"] = 15
+    elif mtype in ("Total Points", "Player Prop", "Half Winner"): parts["Market type"] = 10
+    elif mtype == "Series Winner":                                 parts["Market type"] = 5
+    else:
+        parts["Market type"] = 10 if any(p in title for p in _SIGNAL_PATTERNS) else 6
+
+    # Liquidity
+    snap = row.get("snapshot_count", 1)
+    parts["Liquidity"] = 15 if snap >= 10 else (10 if snap >= 5 else (5 if snap >= 3 else 0))
+
+    # Urgency
     days = row.get("days_to_close", 30)
     if days is not None and not pd.isna(days):
-        parts["Urgency"] = 12 if days <= 3 else (7 if days <= 7 else (3 if days <= 14 else 0))
+        parts["Urgency"] = 10 if (1 <= days <= 3) else (6 if days <= 7 else (3 if days <= 14 else 0))
     else:
         parts["Urgency"] = 0
-    snap = row.get("snapshot_count", 1)
-    parts["Liquidity"] = 5 if snap >= 5 else (-5 if snap <= 1 else 0)
+
+    # Fair-fight zone
+    parts["Fair-fight zone"] = 5 if 0.35 <= cp <= 0.65 else 0
+
     return parts
 
 def extract_event_group(title):
@@ -1701,7 +1793,7 @@ def build_news_query(market_title, category):
 
     return " ".join(query_words)
 
-@st.cache_data(ttl=1800)  # cache 30 min
+@st.cache_data(ttl=600)  # 10-min cache — breaking news surfaces faster
 def fetch_news(query, max_articles=5):
     """Fetch recent news articles via NewsAPI."""
     if not NEWSAPI_KEY:
@@ -1734,65 +1826,86 @@ def fetch_news(query, max_articles=5):
     except Exception:
         return []
 
+def fetch_multi_news(market_title, category, player=None, teams=None):
+    """Run 2-3 targeted NewsAPI queries and return up to 12 deduplicated articles.
+    Covers: title-based query + player injury search + matchup preview."""
+    queries = [build_news_query(market_title, category)]
+    if player:
+        queries.append(f"{player} injury status update")
+    if teams and len(teams) >= 2:
+        queries.append(f"{teams[0]} {teams[1]} preview")
+    seen, articles = set(), []
+    for q in queries:
+        for a in fetch_news(q, max_articles=6):
+            if a["title"] not in seen:
+                seen.add(a["title"])
+                articles.append(a)
+    return articles[:12]
+
 @st.cache_data(ttl=3600)
-def generate_market_research(market_title, current_price, category, edge_score, price_change_pct, news_headlines, today_date="", player_stats_summary="", sport_label="", days_to_close=None):
-    """Call Claude Sonnet to generate a sharp market research card."""
+def generate_market_research(market_title, current_price, category, edge_score,
+                             price_change_pct, news_headlines, today_date="",
+                             player_stats_summary="", sport_label="",
+                             days_to_close=None, injury_report="",
+                             cross_source_price=None, vegas_prob=None):
+    """Call Claude Sonnet to generate a sharp market research card.
+    Now includes: multi-source news (up to 12), injury reports, cross-source gap, Vegas prob."""
     if not ANTHROPIC_API_KEY:
         return None
 
-    # Guard: same-day sports markets have near-zero useful NewsAPI coverage.
-    # Returning a fabricated high-confidence verdict would destroy user trust.
-    if category == "Sports" and days_to_close is not None and not (hasattr(days_to_close, '__float__') and str(days_to_close) == 'nan') and float(days_to_close) <= 0.5 and not player_stats_summary:
-        return {
-            "fair_value": current_price,
-            "bear_case": max(0.01, current_price - 0.08),
-            "bull_case": min(0.99, current_price + 0.08),
-            "verdict": "FAIRLY PRICED",
-            "confidence": "LOW",
-            "reasoning": "Market closes today. NewsAPI has limited same-day sports coverage — no reliable news signal was found to justify a directional verdict.",
-            "key_risk": "Live game conditions, injuries, or line-ups not reflected in available news.",
-            "base_rate": "N/A",
-            "narrative_flag": False,
-            "narrative_flag_reason": "",
-            "_data_warning": "Same-day sports market — AI verdict reliability is reduced. NewsAPI does not surface real-time game data.",
-        }
+    import datetime as _dt_inner
+    today = today_date or _dt_inner.date.today().strftime("%B %d, %Y")
 
-    news_block = ""
+    # Build news block — up to 12 articles
     if news_headlines:
         news_block = "\n".join([
             f"- [{a['source']} {a['published']}] {a['title']}" +
-            (f"\n  {a['description'][:120]}" if a.get('description') else "")
-            for a in news_headlines[:5]
+            (f"\n  {a['description'][:150]}" if a.get('description') else "")
+            for a in news_headlines[:12]
         ])
     else:
         news_block = "No recent news found."
 
-    system = """You are an elite prediction market analyst. Assess whether a market is mispriced.
+    # Injury block
+    injury_block = f"\nINJURY REPORT (as of today — treat this as the most important context):\n{injury_report}" if injury_report else ""
 
-RULES — follow these exactly:
-1. Be brutally specific. If news mentions a 3-0 scoreline, a key injury, a poll number — cite it by name.
-2. If price moved >15%, something specific caused it. Find it in the headlines and name it.
-3. Use hard base rates: "Teams trailing 3-0 after first leg advance ~2% historically in Champions League."
-4. fair_value must be YOUR genuine estimate — not just the current price echoed back.
-5. bear_case and bull_case are the realistic low/high range — typically ±8-20pp from fair_value.
-6. narrative_flag = true ONLY if price moved >15% AND the headlines don't explain why.
-7. reasoning must be 2-3 sentences, specific, no vague phrases like "market uncertainty" or "various factors".
-8. Use today's date to calculate current player ages accurately — do NOT use ages from prior seasons.
-9. If recent game stats are provided, use them as the primary form indicator over general reputation.
+    # Cross-source signal
+    cross_block = ""
+    if cross_source_price is not None and not pd.isna(cross_source_price):
+        gap = abs(current_price - float(cross_source_price))
+        direction = "higher on Kalshi" if current_price > float(cross_source_price) else "higher on Polymarket"
+        cross_block = f"\nCross-exchange signal: This market is priced at {current_price:.1%} on one exchange and {float(cross_source_price):.1%} on the other ({direction}). Gap = {gap:.1%}. This is a real arbitrage signal — factor it into your fair value."
 
-Return ONLY valid JSON, no markdown, no explanation:
-{
+    # Vegas signal
+    vegas_block = ""
+    if vegas_prob is not None and not pd.isna(vegas_prob):
+        vegas_block = f"\nVegas implied probability: {float(vegas_prob):.1%} (from sportsbook moneyline). Compare your fair_value to this — if you agree with Vegas, say so and explain why the market differs."
+
+    system = f"""You are an elite prediction market analyst. Today is {today}. Your training data has a knowledge cutoff of August 2025.
+
+CRITICAL RULES — follow exactly:
+1. Your training knowledge about player status, injuries, rosters, and recent results is LIKELY OUTDATED. Trust ONLY the injury reports, news articles, and stats provided below. If something isn't in the context, say you don't have data on it — do NOT guess or use training memory for recent facts.
+2. Be brutally specific. Cite exact figures: injury status, poll numbers, scores, odds, stats from the provided context.
+3. fair_value must be your genuine estimate — not the current price echoed back. Be willing to diverge significantly.
+4. If an injury report shows a key player is OUT or QUESTIONABLE, that must heavily influence your fair_value.
+5. If a cross-exchange price gap exists, explain which direction is correct and why.
+6. Use hard base rates where possible: "Teams trailing 3-0 advance ~2% historically."
+7. narrative_flag = true ONLY if price moved >15% AND nothing in the provided context explains why.
+8. reasoning must be 2-3 sharp sentences citing specific facts from the context. No vague phrases like "market uncertainty."
+
+Return ONLY valid JSON:
+{{
   "fair_value": <0.01-0.99>,
   "bear_case": <0.01-0.99>,
   "bull_case": <0.01-0.99>,
   "verdict": "OVERPRICED" | "UNDERPRICED" | "FAIRLY PRICED",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "reasoning": "<2-3 sharp sentences citing specific facts from the news or recent stats>",
+  "reasoning": "<2-3 sharp sentences citing specific facts>",
   "key_risk": "<single most specific factor that could flip this verdict>",
   "base_rate": "<one hard historical stat, or N/A>",
   "narrative_flag": true | false,
   "narrative_flag_reason": "<one sentence if flag is true, else empty string>"
-}"""
+}}"""
 
     stats_block = f"\nRecent team/player stats (use as primary form indicator):\n{player_stats_summary}" if player_stats_summary else ""
     sport_block = f"\nSport: {sport_label}" if sport_label else ""
@@ -1802,12 +1915,13 @@ Current probability: {current_price:.1%}
 Category: {category}{sport_block}
 Edge score: {edge_score}/100
 Price change: {price_change_pct:+.1f}% since tracking began
-Today's date: {today_date or "March 2026"}
+Today's date: {today}
+{injury_block}{cross_block}{vegas_block}
 {stats_block}
 Recent news (most recent first):
 {news_block}
 
-Assess this market now."""
+Assess this market now. Remember: rely only on the provided context, not your training knowledge of recent events."""
 
     try:
         r = requests.post(
@@ -1819,7 +1933,7 @@ Assess this market now."""
             },
             json={
                 "model": "claude-sonnet-4-6",
-                "max_tokens": 1024,
+                "max_tokens": 1500,
                 "system": system,
                 "messages": [{"role": "user", "content": prompt}]
             },
@@ -1827,15 +1941,12 @@ Assess this market now."""
         )
         r.raise_for_status()
         text = r.json()["content"][0]["text"].strip()
-        # Strip any accidental markdown fences
         text = text.replace("```json", "").replace("```", "").strip()
-        # Find the JSON object even if there's stray text
         start = text.find("{")
         end   = text.rfind("}") + 1
         if start >= 0 and end > start:
             text = text[start:end]
         result = json.loads(text)
-        # Ensure required fields with safe defaults
         result.setdefault("fair_value", current_price)
         result.setdefault("bear_case", max(0.01, result["fair_value"] - 0.10))
         result.setdefault("bull_case", min(0.99, result["fair_value"] + 0.10))
@@ -2555,6 +2666,28 @@ with tab4:
         )
         display_df["market_type"] = display_df["ticker"].apply(get_market_type)
 
+        # Cross-source arbitrage: match same game + market_type across Polymarket/Kalshi
+        display_df["cross_source_price"] = float("nan")
+        _gk_col  = display_df["game_key"]
+        _mt_col  = display_df["market_type"]
+        _src_col = display_df["source"]
+        _cp_col  = display_df["current_price"]
+        for _idx in display_df.index:
+            _gk  = _gk_col.at[_idx]
+            _mt  = _mt_col.at[_idx]
+            _src = _src_col.at[_idx]
+            _mask = (
+                (_gk_col == _gk) &
+                (_mt_col == _mt) &
+                (_src_col != _src) &
+                (display_df.index != _idx)
+            )
+            _matches = display_df.loc[_mask]
+            if not _matches.empty:
+                display_df.at[_idx, "cross_source_price"] = _matches.iloc[0]["current_price"]
+        # Recompute edge_score now that cross_source_price and market_type are available
+        display_df["edge_score"] = display_df.apply(lambda r: compute_edge_score(r, _cat_avg), axis=1)
+
         # When searching, enrich each matched game card with ALL related markets
         # (props, spreads, totals) even if their titles didn't match the search query.
         if search_query.strip():
@@ -2836,49 +2969,86 @@ with tab4:
         # ── Inline deep research (triggered by per-row 🔬 buttons) ──────────────
         if st.session_state.get("dr_ticker"):
             _dr_ticker = st.session_state["dr_ticker"]
-            _dr_match  = df_res[df_res["ticker"] == _dr_ticker]
+            _dr_match  = display_df[display_df["ticker"] == _dr_ticker]
+            if _dr_match.empty:
+                _dr_match = df_res[df_res["ticker"] == _dr_ticker]
             if not _dr_match.empty:
                 _dr_row  = _dr_match.iloc[0]
-                _dr_edge = int(_dr_row["edge_score"])
+                _dr_edge = int(_dr_row.get("edge_score", 0))
                 st.markdown("---")
                 st.markdown(f"### 🔬 Deep Research: {_dr_row['event_ticker']}")
-                with st.spinner("Fetching news and generating analysis..."):
+                with st.spinner("Fetching live data and generating analysis..."):
                     _dr_sport_lbl = get_sport_label(_dr_row.get("ticker",""), _dr_row["event_ticker"])
-                    _dr_news_q    = build_news_query(_dr_row["event_ticker"], _dr_row["category"])
-                    _dr_news      = fetch_news(_dr_news_q, max_articles=5)
-                    _dr_stats     = detect_entity_and_fetch_stats(
+                    # Detect sport for injury fetch
+                    _dr_sport_key = "nba"
+                    if "NFL" in _dr_sport_lbl:  _dr_sport_key = "nfl"
+                    elif "NHL" in _dr_sport_lbl: _dr_sport_key = "nhl"
+                    elif "MLB" in _dr_sport_lbl: _dr_sport_key = "mlb"
+
+                    # Fetch entity stats (both teams for matchups)
+                    _dr_stats = detect_entity_and_fetch_stats(
                         _dr_row["event_ticker"], _dr_row["category"], sport_hint=_dr_sport_lbl
                     )
+
+                    # Build player/team context
+                    _dr_player = None
+                    _dr_teams  = []
                     _dr_st_txt = ""
                     if _dr_stats:
                         if _dr_stats.get("type") == "matchup":
                             _parts = []
                             for _side_key in ("team_a", "team_b"):
                                 _side = _dr_stats.get(_side_key)
-                                if _side and _side.get("games"):
-                                    _g = _side["games"]
-                                    _parts.append(
-                                        f"{_side['team']} last {len(_g)} games: " +
-                                        ", ".join([f"{x['Date']}: {x.get('Score','?')} ({x.get('W/L','?')})" for x in _g])
-                                    )
+                                if _side:
+                                    _dr_teams.append(_side.get("team",""))
+                                    if _side.get("games"):
+                                        _g = _side["games"]
+                                        _parts.append(
+                                            f"{_side['team']} last {len(_g)} games: " +
+                                            ", ".join([f"{x['Date']}: {x.get('Score','?')} ({x.get('W/L','?')})" for x in _g])
+                                        )
                             _dr_st_txt = " | ".join(_parts)
                         elif _dr_stats.get("games"):
                             _g = _dr_stats["games"]
-                            if _dr_stats["type"] == "player":
-                                _dr_st_txt = (f"{_dr_stats['player']} ({_dr_stats.get('team','')}) last {len(_g)} games: " +
+                            if _dr_stats.get("type") == "player":
+                                _dr_player = _dr_stats.get("player")
+                                _dr_st_txt = (f"{_dr_player} ({_dr_stats.get('team','')}) last {len(_g)} games: " +
                                               ", ".join([f"{x['Date']}: {x['PTS']}pts/{x['REB']}reb/{x['AST']}ast" for x in _g]))
                             else:
+                                _dr_teams.append(_dr_stats.get("team",""))
                                 _dr_st_txt = (f"{_dr_stats['team']} last {len(_g)} games: " +
                                               ", ".join([f"{x['Date']}: {x.get('Score','?')} ({x.get('W/L','?')})" for x in _g]))
+
+                    # Multi-query news — up to 12 articles
+                    _dr_news = fetch_multi_news(
+                        _dr_row["event_ticker"], _dr_row["category"],
+                        player=_dr_player,
+                        teams=_dr_teams if _dr_teams else None,
+                    )
+
+                    # Injury report (sports markets only)
+                    _dr_injury_str = ""
+                    if _dr_row.get("category") == "Sports":
+                        _dr_injuries = fetch_espn_injuries(_dr_sport_key)
+                        _dr_injury_str = _format_injuries_for_prompt(
+                            _dr_injuries,
+                            teams_involved=_dr_teams if _dr_teams else None
+                        )
+
                     import datetime as _dt2
                     _dr_research = generate_market_research(
-                        market_title=_dr_row["event_ticker"], current_price=_dr_row["current_price"],
-                        category=_dr_row["category"], edge_score=_dr_edge,
-                        price_change_pct=_dr_row["price_change_pct"], news_headlines=_dr_news,
+                        market_title=_dr_row["event_ticker"],
+                        current_price=_dr_row["current_price"],
+                        category=_dr_row["category"],
+                        edge_score=_dr_edge,
+                        price_change_pct=_dr_row["price_change_pct"],
+                        news_headlines=_dr_news,
                         today_date=_dt2.date.today().strftime("%B %d, %Y"),
                         player_stats_summary=_dr_st_txt,
                         sport_label=_dr_sport_lbl,
                         days_to_close=_dr_row.get("days_to_close"),
+                        injury_report=_dr_injury_str,
+                        cross_source_price=_dr_row.get("cross_source_price"),
                     )
                 if _dr_research and _dr_research.get("_error"):
                     st.error(f"⚠️ AI verdict failed: {_dr_research['_error']}")
