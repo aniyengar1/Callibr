@@ -504,6 +504,11 @@ def categorize(question):
         "olympics","medal","gold medal",
         "soccer","football","basketball","baseball","hockey","tennis","golf",
         "boxing","mma","wrestling","volleyball","rugby","cricket","cycling",
+        # IPL team names (titles use team names, not the word "ipl")
+        "mumbai indians","chennai super kings","royal challengers","kolkata knight riders",
+        "sunrisers hyderabad","delhi capitals","rajasthan royals","punjab kings",
+        "lucknow super giants","gujarat titans",
+        " mi "," csk "," rcb "," kkr "," srh "," dc "," rr "," pbks "," lsg "," gt ",
         "score","points","touchdown","homerun","home run","field goal","three pointer",
         "assist","rebound","strikeout","shutout","hat trick","overtime","playoff",
         "championship","tournament","season","draft","trade","roster","injury report",
@@ -902,6 +907,14 @@ def detect_entity_and_fetch_stats(market_title, category, sport_hint=""):
         "oilers","avalanche","golden knights","hurricanes","flames","senators","canadiens",
     ]):
         sport = "nhl"
+    elif "IPL" in sport_hint or "Cricket" in sport_hint or any(x in title_lower for x in [
+        "ipl","cricket","mumbai indians","chennai super kings","royal challengers",
+        "kolkata knight riders","sunrisers","delhi capitals","rajasthan royals",
+        "punjab kings","lucknow super giants","gujarat titans",
+    ]):
+        # ESPN has no IPL/cricket data — skip stats lookup entirely,
+        # rely on news + Claude reasoning only
+        return None
     else:
         sport = "nba"  # default
 
@@ -1147,9 +1160,81 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ── parlay builder helpers ────────────────────────────────────────────────────
+_RISK_BOUNDS = {
+    "Conservative": (0.62, 0.88),
+    "Balanced":     (0.52, 0.88),
+    "Aggressive":   (0.42, 0.85),
+}
+_PARLAY_DOMAINS = [
+    "🏀 NBA", "🏒 NHL", "⚾ MLB", "🏈 NFL", "⚽ Soccer",
+    "₿ Crypto", "🏛 Politics", "📈 Tech", "🎭 Entertainment", "🏏 Cricket/IPL",
+]
+_PARLAY_DOMAIN_CAT = {
+    "🏀 NBA": "Sports", "🏒 NHL": "Sports", "⚾ MLB": "Sports",
+    "🏈 NFL": "Sports", "⚽ Soccer": "Sports", "🏏 Cricket/IPL": "Sports",
+    "₿ Crypto": "Crypto", "🏛 Politics": "Politics & Macro",
+    "📈 Tech": "Tech & Markets", "🎭 Entertainment": "Entertainment & Legal",
+}
+
+def build_parlay(df, cat_avg, stake, target_payout, selected_domains, risk, min_edge=45):
+    """Greedy parlay builder. Returns (list of leg dicts, achieved_multiplier)."""
+    M_required = target_payout / max(stake, 0.01)
+    now_p = pd.Timestamp.now(tz="UTC")
+
+    target_cats = list({_PARLAY_DOMAIN_CAT.get(d, "Sports") for d in selected_domains})
+    candidates = df[
+        df["category"].isin(target_cats) &
+        (pd.to_datetime(df["close_time"], errors="coerce", utc=True) > now_p)
+    ].copy()
+
+    if "edge_score" not in candidates.columns or candidates["edge_score"].isna().all():
+        candidates["edge_score"] = candidates.apply(
+            lambda r: compute_edge_score(r, cat_avg), axis=1
+        )
+    candidates = candidates[candidates["edge_score"] >= min_edge]
+    if candidates.empty:
+        return [], 1.0
+
+    candidates["direction"] = candidates["current_price"].apply(
+        lambda p: "YES" if p >= 0.5 else "NO"
+    )
+    candidates["leg_prob"] = candidates.apply(
+        lambda r: float(r["current_price"]) if r["direction"] == "YES" else float(1 - r["current_price"]),
+        axis=1,
+    )
+
+    prob_min, prob_max = _RISK_BOUNDS[risk]
+    candidates = candidates[candidates["leg_prob"].between(prob_min, prob_max)]
+    if candidates.empty:
+        return [], 1.0
+
+    candidates["leg_score"] = (
+        candidates["edge_score"] * 0.65
+        + candidates["leg_prob"] * 25.0
+        + candidates.get("snapshot_count", pd.Series(1, index=candidates.index)).clip(0, 10) * 0.8
+    )
+
+    candidates["_gk_p"] = candidates.apply(
+        lambda r: extract_game_key_global(r["ticker"], r["event_ticker"]), axis=1
+    )
+    candidates = (
+        candidates.sort_values("leg_score", ascending=False)
+        .drop_duplicates("_gk_p", keep="first")
+    )
+
+    selected, current_mult = [], 1.0
+    for _, row in candidates.iterrows():
+        if current_mult >= M_required:
+            break
+        selected.append(row.to_dict())
+        current_mult *= 1.0 / row["leg_prob"]
+
+    return selected, current_mult
+
 # ── tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab4, tab2 = st.tabs([
-    "📊 Overview", "🔍 Market Research", "🔀 Sources"
+tab1, tab4, tab2, tab_parlay = st.tabs([
+    "📊 Overview", "🔍 Market Research", "🔀 Sources", "🎯 Parlay"
 ])
 
 # ── edge score helpers (defined here so tab1 + tab4 can both use them) ───────
@@ -1782,7 +1867,7 @@ def build_news_query(market_title, category):
     # Category-specific boosters
     boosters = {
         "Politics & Macro": ["election","policy","congress","senate"],
-        "Sports": ["game","stats","injury","trade"],
+        "Sports": ["game","stats","injury","trade","ipl","cricket"],
         "Crypto": ["price","market","regulation"],
         "Tech & Markets": ["earnings","stock","announcement"],
         "Entertainment & Legal": ["trial","verdict","release"],
@@ -2938,6 +3023,25 @@ with tab4:
                             if _rc[6].button("🔬", key=f"dr_{bet['ticker']}", help="Deep research"):
                                 st.session_state["dr_ticker"] = bet["ticker"]
                                 st.session_state.pop("dr_ticker_result", None)
+                            with _rc[7]:
+                                _pk = f"addp_{bet['ticker']}"
+                                if st.button("＋", key=_pk, help="Add to Parlay", use_container_width=True):
+                                    _p_leg = {
+                                        "ticker":       bet["ticker"],
+                                        "event_ticker": bet["event_ticker"],
+                                        "direction":    "YES" if float(bet["current_price"]) >= 0.5 else "NO",
+                                        "entry_price":  float(bet["current_price"]),
+                                        "close_time":   str(bet.get("close_time", "")),
+                                        "edge_score":   int(bet.get("edge_score", 0)),
+                                        "source":       str(bet.get("source", "")),
+                                        "category":     str(bet.get("category", "")),
+                                        "leg_prob":     float(bet["current_price"]) if float(bet["current_price"]) >= 0.5 else float(1 - bet["current_price"]),
+                                    }
+                                    _p_legs = list(st.session_state.get("parlay_legs_manual", []))
+                                    if not any(l["ticker"] == _p_leg["ticker"] for l in _p_legs):
+                                        _p_legs.append(_p_leg)
+                                        st.session_state["parlay_legs_manual"] = _p_legs
+                                        st.toast("Added to Parlay → switch to 🎯 Parlay tab")
                             # Edge breakdown dropdown
                             if st.session_state.get(_ed_key):
                                 st.markdown(render_edge_breakdown(_bd, es), unsafe_allow_html=True)
@@ -3067,3 +3171,256 @@ with tab4:
         else:
             st.info("Enter a search term above to find markets, or browse by category.")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB — PARLAY BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_parlay:
+    st.markdown("## 🎯 Parlay Builder")
+    st.markdown(
+        "<div style='color:#999ea6;font-size:14px;margin-bottom:28px;'>"
+        "Set your stake and target payout. We build the highest-confidence parlay "
+        "from your chosen domains using live edge scores — no two legs from the same game.</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── inputs ────────────────────────────────────────────────────────────────
+    _pc1, _pc2 = st.columns(2)
+    with _pc1:
+        _p_stake  = st.number_input("Stake ($)", min_value=1.0, value=50.0, step=5.0, key="p_stake")
+    with _pc2:
+        _p_target = st.number_input("Target Payout ($)", min_value=2.0, value=500.0, step=25.0, key="p_target")
+
+    _p_domains = st.multiselect(
+        "Domains",
+        options=_PARLAY_DOMAINS,
+        default=_PARLAY_DOMAINS[:6],
+        key="p_domains",
+        label_visibility="visible",
+    )
+    _p_risk = st.radio(
+        "Risk profile",
+        options=["Conservative", "Balanced", "Aggressive"],
+        index=1,
+        horizontal=True,
+        key="p_risk",
+    )
+
+    _p_build_btn = st.button("⚡ Build My Parlay", use_container_width=True, type="primary")
+
+    if _p_build_btn:
+        if not _p_domains:
+            st.warning("Select at least one domain.")
+        else:
+            _p_cat_avg = df_markets.groupby("category")["price_change_pct"].mean().to_dict()
+            _p_legs, _p_mult = build_parlay(
+                df_markets, _p_cat_avg, _p_stake, _p_target, _p_domains, _p_risk
+            )
+            st.session_state["parlay_built"]      = _p_legs
+            st.session_state["parlay_built_mult"] = _p_mult
+            st.session_state["parlay_built_stake"] = float(_p_stake)
+
+    # ── generated parlay display ───────────────────────────────────────────────
+    _built_legs = st.session_state.get("parlay_built", [])
+    _built_mult  = st.session_state.get("parlay_built_mult", 1.0)
+    _built_stake = st.session_state.get("parlay_built_stake", float(_p_stake))
+
+    if _built_legs:
+        st.markdown("---")
+        st.markdown("### 📋 Your Parlay")
+
+        # Leg cards
+        _remove_idx = None
+        for _li, _leg in enumerate(_built_legs):
+            _lp   = float(_leg.get("leg_prob", 0.5))
+            _ldir = _leg.get("direction", "YES")
+            _les  = int(_leg.get("edge_score", 0))
+            _les_color = "#00C2A8" if _les >= 70 else ("#F59E0B" if _les >= 50 else "#6b7280")
+            _dir_color = "#00C2A8" if _ldir == "YES" else "#f90000"
+            _title_short = str(_leg.get("event_ticker",""))[:58]
+            _sport_lbl = get_sport_label(str(_leg.get("ticker","")), str(_leg.get("event_ticker","")))
+
+            st.markdown(
+                f"""<div style='background:#14181e;border:1px solid #1e2530;padding:12px 16px;margin-bottom:6px;display:flex;align-items:center;gap:12px;'>
+  <span style='font-size:10px;color:#4a5060;min-width:20px;'>#{_li+1}</span>
+  <span style='font-size:11px;color:#999ea6;min-width:40px;'>{_sport_lbl}</span>
+  <span style='flex:1;font-size:12px;color:#eef2f9;'>{_title_short}</span>
+  <span style='padding:2px 8px;border-radius:2px;font-size:9px;font-weight:700;letter-spacing:0.1em;background:{_dir_color}22;color:{_dir_color};border:1px solid {_dir_color}44;'>{_ldir}</span>
+  <span style='font-size:11px;color:#eef2f9;min-width:38px;text-align:right;'>{_lp:.0%}</span>
+  <span style='font-size:11px;color:#999ea6;min-width:40px;text-align:right;'>×{1/_lp:.2f}</span>
+  <span style='padding:2px 8px;border-radius:2px;font-size:9px;font-weight:700;background:{_les_color}22;color:{_les_color};border:1px solid {_les_color}44;'>{_les}</span>
+</div>""",
+                unsafe_allow_html=True,
+            )
+            _rm_col, _ = st.columns([1, 8])
+            with _rm_col:
+                if st.button("✕ Remove", key=f"rm_leg_{_li}", use_container_width=True):
+                    _remove_idx = _li
+
+        if _remove_idx is not None:
+            _built_legs.pop(_remove_idx)
+            st.session_state["parlay_built"] = _built_legs
+            if _built_legs:
+                _built_mult = 1.0
+                for _l in _built_legs:
+                    _built_mult *= 1.0 / float(_l.get("leg_prob", 0.5))
+                st.session_state["parlay_built_mult"] = _built_mult
+            else:
+                st.session_state["parlay_built_mult"] = 1.0
+            st.rerun()
+
+        # Summary footer
+        if _built_legs:
+            _combined_prob = 1.0
+            for _l in _built_legs:
+                _combined_prob *= float(_l.get("leg_prob", 0.5))
+            _avg_edge = sum(int(_l.get("edge_score",0)) for _l in _built_legs) / len(_built_legs)
+            _payout   = _built_stake * _built_mult
+
+            st.markdown(
+                f"""<div style='background:#0f1318;border:1px solid #1e2530;padding:20px 24px;margin-top:12px;'>
+  <div style='display:flex;gap:40px;flex-wrap:wrap;margin-bottom:16px;'>
+    <div><div style='font-size:9px;color:#4a5060;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;'>Combined Prob</div>
+         <div style='font-size:22px;font-weight:700;color:#eef2f9;'>{_combined_prob:.2%}</div></div>
+    <div><div style='font-size:9px;color:#4a5060;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;'>Multiplier</div>
+         <div style='font-size:22px;font-weight:700;color:#00C2A8;'>×{_built_mult:.2f}</div></div>
+    <div><div style='font-size:9px;color:#4a5060;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;'>Est. Payout</div>
+         <div style='font-size:22px;font-weight:700;color:#eef2f9;'>${_payout:,.2f}</div></div>
+    <div><div style='font-size:9px;color:#4a5060;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;'>Avg Edge</div>
+         <div style='font-size:22px;font-weight:700;color:#F59E0B;'>{_avg_edge:.0f}/100</div></div>
+    <div><div style='font-size:9px;color:#4a5060;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;'>Legs</div>
+         <div style='font-size:22px;font-weight:700;color:#eef2f9;'>{len(_built_legs)}</div></div>
+  </div>
+</div>""",
+                unsafe_allow_html=True,
+            )
+
+            if st.button("💾 Save & Track", use_container_width=True, type="primary", key="save_parlay_btn"):
+                st.session_state["active_parlay"] = [dict(l) for l in _built_legs]
+                st.toast("Parlay saved — scroll down to track progress!")
+
+    elif _p_build_btn:
+        st.info("No markets matched your criteria. Try Balanced risk, more domains, or a smaller target multiplier.")
+
+    # ── manual legs (added via + button in Market Research) ───────────────────
+    _manual_legs = st.session_state.get("parlay_legs_manual", [])
+    if _manual_legs:
+        st.markdown("---")
+        st.markdown(f"### 📌 Manually Added — {len(_manual_legs)} leg(s)")
+        st.caption("Added via + button in Market Research tab.")
+        _remove_manual = None
+        for _mi, _ml in enumerate(_manual_legs):
+            _mlp   = float(_ml.get("leg_prob", 0.5))
+            _mldir = _ml.get("direction","YES")
+            _mles  = int(_ml.get("edge_score",0))
+            _mles_c = "#00C2A8" if _mles >= 70 else ("#F59E0B" if _mles >= 50 else "#6b7280")
+            _mdir_c = "#00C2A8" if _mldir == "YES" else "#f90000"
+            st.markdown(
+                f"""<div style='background:#14181e;border:1px solid #1e2530;padding:12px 16px;margin-bottom:6px;display:flex;align-items:center;gap:12px;'>
+  <span style='font-size:10px;color:#4a5060;min-width:20px;'>#{_mi+1}</span>
+  <span style='flex:1;font-size:12px;color:#eef2f9;'>{str(_ml.get("event_ticker",""))[:58]}</span>
+  <span style='padding:2px 8px;border-radius:2px;font-size:9px;font-weight:700;background:{_mdir_c}22;color:{_mdir_c};border:1px solid {_mdir_c}44;'>{_mldir}</span>
+  <span style='font-size:11px;color:#eef2f9;min-width:38px;text-align:right;'>{_mlp:.0%}</span>
+  <span style='padding:2px 8px;border-radius:2px;font-size:9px;font-weight:700;background:{_mles_c}22;color:{_mles_c};border:1px solid {_mles_c}44;'>{_mles}</span>
+</div>""",
+                unsafe_allow_html=True,
+            )
+            _mrc, _ = st.columns([1, 8])
+            with _mrc:
+                if st.button("✕", key=f"rm_manual_{_mi}", use_container_width=True):
+                    _remove_manual = _mi
+
+        if _remove_manual is not None:
+            _manual_legs.pop(_remove_manual)
+            st.session_state["parlay_legs_manual"] = _manual_legs
+            st.rerun()
+
+        if st.button("➕ Add Manual Legs to Builder", key="merge_manual_btn"):
+            _existing = list(st.session_state.get("parlay_built", []))
+            _existing_tickers = {l["ticker"] for l in _existing}
+            for _ml in _manual_legs:
+                if _ml["ticker"] not in _existing_tickers:
+                    _existing.append(dict(_ml))
+            st.session_state["parlay_built"] = _existing
+            st.session_state["parlay_legs_manual"] = []
+            if _existing:
+                _new_mult = 1.0
+                for _l in _existing:
+                    _new_mult *= 1.0 / float(_l.get("leg_prob", 0.5))
+                st.session_state["parlay_built_mult"] = _new_mult
+            st.rerun()
+
+    # ── progress tracker ───────────────────────────────────────────────────────
+    _active = st.session_state.get("active_parlay")
+    if _active:
+        st.markdown("---")
+        st.markdown("### 📡 Live Parlay Tracker")
+
+        _won_count  = 0
+        _lost_count = 0
+        _busted     = False
+
+        _tracker_rows = []
+        for _al in _active:
+            _a_ticker = _al["ticker"]
+            _a_dir    = _al.get("direction","YES")
+            _a_entry  = float(_al.get("entry_price", 0.5))
+            _a_edge   = int(_al.get("edge_score",0))
+
+            # Live price from df_markets
+            _a_live_match = df_markets[df_markets["ticker"] == _a_ticker]
+            _a_live_price = float(_a_live_match.iloc[0]["current_price"]) if not _a_live_match.empty else _a_entry
+
+            # Status
+            if _a_dir == "YES":
+                if _a_live_price > 0.95:   _a_status = "✅ Won"
+                elif _a_live_price < 0.05: _a_status = "❌ Lost";  _busted = True
+                elif _a_live_price - _a_entry > 0.05: _a_status = "🟢 Winning"
+                elif _a_entry - _a_live_price > 0.05: _a_status = "🔴 Losing"
+                else: _a_status = "⏳ Pending"
+            else:
+                if _a_live_price < 0.05:   _a_status = "✅ Won"
+                elif _a_live_price > 0.95: _a_status = "❌ Lost";  _busted = True
+                elif _a_entry - _a_live_price > 0.05: _a_status = "🟢 Winning"
+                elif _a_live_price - _a_entry > 0.05: _a_status = "🔴 Losing"
+                else: _a_status = "⏳ Pending"
+
+            if "✅" in _a_status: _won_count += 1
+            if "❌" in _a_status: _lost_count += 1
+            _tracker_rows.append((_al, _a_live_price, _a_status))
+
+        # Overall status banner
+        _resolved = _won_count + _lost_count
+        if _busted:
+            st.error(f"❌ Parlay BUSTED — {_lost_count} leg(s) lost")
+        elif _won_count == len(_active):
+            st.success(f"🎉 Parlay HIT — all {len(_active)} legs won!")
+        else:
+            _pct_done = _resolved / max(len(_active), 1)
+            st.progress(_pct_done, text=f"{_resolved} of {len(_active)} legs resolved · {_won_count} won · {_lost_count} lost")
+
+        # Per-leg rows
+        for _al, _a_live_price, _a_status in _tracker_rows:
+            _a_entry  = float(_al.get("entry_price", 0.5))
+            _a_dir    = _al.get("direction","YES")
+            _a_edge   = int(_al.get("edge_score",0))
+            _a_ec     = "#00C2A8" if _a_edge >= 70 else ("#F59E0B" if _a_edge >= 50 else "#6b7280")
+            _a_dir_c  = "#00C2A8" if _a_dir == "YES" else "#f90000"
+            _a_move   = _a_live_price - _a_entry
+            _a_move_c = "#00C2A8" if _a_move > 0 else ("#f90000" if _a_move < 0 else "#4a5060")
+            _a_move_s = f"{_a_move:+.1%}"
+            st.markdown(
+                f"""<div style='background:#14181e;border:1px solid #1e2530;padding:12px 16px;margin-bottom:6px;display:flex;align-items:center;gap:12px;'>
+  <span style='min-width:90px;font-size:12px;'>{_a_status}</span>
+  <span style='flex:1;font-size:11px;color:#eef2f9;'>{str(_al.get("event_ticker",""))[:52]}</span>
+  <span style='padding:2px 8px;border-radius:2px;font-size:9px;font-weight:700;background:{_a_dir_c}22;color:{_a_dir_c};border:1px solid {_a_dir_c}44;'>{_a_dir}</span>
+  <span style='font-size:11px;color:#999ea6;min-width:50px;text-align:right;'>Entry {_a_entry:.0%}</span>
+  <span style='font-size:11px;color:#eef2f9;min-width:44px;text-align:right;'>Now {_a_live_price:.0%}</span>
+  <span style='font-size:11px;min-width:44px;text-align:right;color:{_a_move_c};'>{_a_move_s}</span>
+  <span style='padding:2px 8px;border-radius:2px;font-size:9px;font-weight:700;background:{_a_ec}22;color:{_a_ec};border:1px solid {_a_ec}44;'>{_a_edge}</span>
+</div>""",
+                unsafe_allow_html=True,
+            )
+
+        if st.button("🗑 Clear Parlay", key="clear_active_parlay"):
+            st.session_state.pop("active_parlay", None)
+            st.rerun()
