@@ -636,6 +636,11 @@ footer {
 </footer>
 
 <script>
+// ── auto-access: skip form if already approved ────────────────────────────────
+if (localStorage.getItem('callibr_access')) {
+  window.location.href = 'https://getcallibr.streamlit.app';
+}
+
 // ── 3D cube ──────────────────────────────────────────────────────────────────
 const FACE_DATA = [
   { name: 'face-front', cards: [
@@ -820,7 +825,8 @@ async function handleAccessCheck() {
     if (!data[0].approved) {
       showAccessError('Your access is pending approval. We\'ll be in touch soon.'); return;
     }
-    // Approved — redirect to app
+    // Approved — save to localStorage and redirect
+    localStorage.setItem('callibr_access', email);
     window.location.href = 'https://getcallibr.streamlit.app';
   } catch (err) {
     showAccessError('Something went wrong. Please try again.');
