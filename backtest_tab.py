@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import date, timedelta
+from scipy.stats import norm as _scipy_norm
 
 # ── design tokens (mirrors app.py) ────────────────────────────────────────────
 _BG0   = "#080b0f"
@@ -343,12 +344,11 @@ def compute_stats(df: pd.DataFrame, stake: float = 1.0) -> dict:
     # Probabilistic Sharpe (simplified)
     psr = float("nan")
     if n > 1 and std > 0:
-        from scipy.stats import norm
         sr_hat = r.mean() / std
         skew   = float(pd.Series(r).skew())
         kurt   = float(pd.Series(r).kurtosis())
         sr_se  = np.sqrt((1 + (0.5 * sr_hat**2) - skew * sr_hat + ((kurt - 3) / 4) * sr_hat**2) / (n - 1))
-        psr    = float(norm.cdf(sr_hat / sr_se)) if sr_se > 0 else float("nan")
+        psr    = float(_scipy_norm.cdf(sr_hat / sr_se)) if sr_se > 0 else float("nan")
 
     return {
         "n_trades":          n,
